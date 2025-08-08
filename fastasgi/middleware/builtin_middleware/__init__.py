@@ -1,0 +1,16 @@
+"""
+Built-in middleware for FastASGI.
+Compatible with FastAPI middleware interfaces.
+"""
+
+from .cors import CORSMiddleware
+from .gzip import GZipMiddleware
+from .httpsredirect import HTTPSRedirectMiddleware
+from .trustedhost import TrustedHostMiddleware
+
+__all__ = [
+    "CORSMiddleware",
+    "GZipMiddleware", 
+    "HTTPSRedirectMiddleware",
+    "TrustedHostMiddleware",
+]
