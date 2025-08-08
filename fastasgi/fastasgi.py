@@ -12,32 +12,26 @@ from .middleware import MiddlewareChain, MiddlewareCallable
 
 
 class FastASGI:
-    """
-    FastASGI application class with routing support.
-
-    This class implements the core ASGI protocol and provides a routing system
-    with decorators for easy route registration.
-    """
+    """FastASGI application class with routing support."""
 
     def __init__(self, router: Optional[APIRouter] = None):
-        """
-        Initialize the FastASGI application.
+        """Initialize the FastASGI application.
 
         Args:
-            router: Optional router instance. If not provided, creates a new APIRouter.
+            router: Optional router instance. If not provided, a new APIRouter is created.
         """
         self.router = router or APIRouter()
         self.middleware_chain = MiddlewareChain()
         self._app_with_middleware: Callable[[Request], Awaitable[Response]] | None = (
-            None  # Will be built during startup
+            None
         )
-        self._middleware_built = False  # Track if middleware chain has been built
+        self._middleware_built = False
 
         # Lifespan event handlers
         self._startup_handlers: List[Callable[[], Awaitable[None]]] = []
         self._shutdown_handlers: List[Callable[[], Awaitable[None]]] = []
 
-        # Register internal middleware chain builder as first startup handler
+        # First startup handler builds middleware chain
         self._startup_handlers.append(self._build_middleware_chain)
 
     async def _build_middleware_chain(self):
@@ -292,6 +286,8 @@ class FastASGI:
 
             # Create Request object
             request = Request(scope, body)
+            # Attach app reference so middleware (e.g., ExceptionMiddleware) can inspect debug flag
+            setattr(request, "app", self)
 
             # Process request through pre-built middleware stack
             response = await self._app_with_middleware(request)  # noqa

@@ -10,7 +10,7 @@ from .response import (
 from .status import HTTPStatus
 from .routing import APIRouter, Route
 
-__version__ = "0.3.0"
+__version__ = "0.3.1"
 __all__ = [
     "FastASGI",
     "Request",

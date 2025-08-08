@@ -15,4 +15,5 @@ from .builtin_middleware import (
     GZipMiddleware,
     HTTPSRedirectMiddleware,
     TrustedHostMiddleware,
+    ExceptionMiddleware,
 )
