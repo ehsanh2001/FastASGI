@@ -286,8 +286,6 @@ class FastASGI:
 
             # Create Request object
             request = Request(scope, body)
-            # Attach app reference so middleware (e.g., ExceptionMiddleware) can inspect debug flag
-            setattr(request, "app", self)
 
             # Process request through pre-built middleware stack
             response = await self._app_with_middleware(request)  # noqa
