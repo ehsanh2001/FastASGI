@@ -4,7 +4,7 @@ Request class for FastASGI framework.
 
 import json
 import urllib.parse
-from typing import Dict, Any, Optional, List, Union
+from typing import Dict, Any, Optional, List, Callable, Awaitable
 
 
 class Request:
@@ -18,34 +18,82 @@ class Request:
     - Content type detection
     """
 
-    def __init__(self, scope: Dict[str, Any], body: bytes):
+    def __init__(self, scope: Dict[str, Any]):
         """
         Initialize Request object.
 
+        Note: This method is considered internal. Use the factory methods
+        `Request.from_receive()` or `Request.from_bytes()` to create a
+        fully-formed Request object.
+
         Args:
             scope: ASGI scope dictionary containing request metadata
-            body: Complete HTTP request body as bytes
         """
         self._scope = scope
-        self._body = body
+        self._body: bytes | None = None
         self._query_params = None
         self._query_params_multi = None
         self._json = None
         self._headers = None
         self._cookies = None
+        self._url = None
         self.path_params: Dict[str, Any] = {}  # Dynamic path parameters
+
+    @classmethod
+    async def from_receive(
+        cls, scope: Dict[str, Any], receive: Callable[[], Awaitable[Dict[str, Any]]]
+    ) -> "Request":
+        """
+        Create a Request object from ASGI scope and receive callable.
+        """
+        instance = cls(scope)
+        instance._body = await cls._receive_complete_message(receive)
+        return instance
+
+    @classmethod
+    def from_bytes(cls, scope: Dict[str, Any], body: bytes) -> "Request":
+        """Create a Request object from ASGI scope and raw body bytes.
+        Used in unit tests.
+        """
+        instance = cls(scope)
+        instance._body = body
+        return instance
+
+    @classmethod
+    async def _receive_complete_message(
+        cls,
+        receive: Callable[[], Awaitable[Dict[str, Any]]],
+    ) -> bytes:
+        """
+        Receive the complete HTTP request body from the ASGI receive callable.
+
+        Handles cases where the body arrives in multiple parts.
+        """
+        body_parts: List[bytes] = []
+        while True:
+            message = await receive()
+            if message["type"] == "http.request":
+                body_part = message.get("body", b"")
+                if body_part:
+                    body_parts.append(body_part)
+                if not message.get("more_body", False):
+                    break
+            elif message["type"] == "http.disconnect":
+                break
+        return b"".join(body_parts)
 
     @property
     def url(self) -> str:
         """Full URL as a ParseResult object"""
-        scheme = self._scope.get("scheme", "http")
-        host, port = self._scope.get("server", ("localhost", 80))
+        if self._url is None:
+            scheme = self._scope.get("scheme", "http")
+            host, port = self._scope.get("server", ("localhost", 80))
 
-        url = f"{scheme}://{host}:{port}{self.path}"
-        if self.query_string:
-            url += f"?{self.query_string}"
+            self._url = f"{scheme}://{host}:{port}{self.path}"
+            if self.query_string:
+                self._url += f"?{self.query_string}"
 
-        return url
+        return self._url
 
     @property
     def method(self) -> str:
@@ -79,6 +127,12 @@ class Request:
     @property
     def body(self) -> bytes:
         """Raw request body as bytes"""
+        if self._body is None:
+            # This can happen if the object was not created via a factory.
+            raise RuntimeError(
+                "Request body has not been read. Use 'Request.from_receive()' "
+                "or 'Request.from_bytes()' to create the request."
+            )
         return self._body
 
     @property

@@ -65,8 +65,9 @@ class TestMiddlewareChain:
         app = stack.build(endpoint)
 
         # Create mock request
-        request = Request({"type": "http", "method": "GET", "path": "/"}, b"")
-
+        request = Request.from_bytes(
+            {"type": "http", "method": "GET", "path": "/"}, b""
+        )
         response = await app(request)
         assert response.body == b"Hello"
         assert response.headers.get("X-Logged") == "true"
@@ -112,7 +113,9 @@ class TestMiddlewareChain:
         stack.add(middleware_c)
 
         app = stack.build(endpoint)
-        request = Request({"type": "http", "method": "GET", "path": "/"}, b"")
+        request = Request.from_bytes(
+            {"type": "http", "method": "GET", "path": "/"}, b""
+        )
 
         response = await app(request)
 
@@ -156,7 +159,9 @@ class TestMiddlewareChain:
         app = stack.build(endpoint)
 
         # Test admin path (should be blocked)
-        request = Request({"type": "http", "method": "GET", "path": "/admin"}, b"")
+        request = Request.from_bytes(
+            {"type": "http", "method": "GET", "path": "/admin"}, b""
+        )
         response = await app(request)
 
         assert response.status_code == 401
@@ -165,7 +170,9 @@ class TestMiddlewareChain:
         assert "X-Logged" not in response.headers
 
         # Test normal path (should pass through)
-        request = Request({"type": "http", "method": "GET", "path": "/"}, b"")
+        request = Request.from_bytes(
+            {"type": "http", "method": "GET", "path": "/"}, b""
+        )
         response = await app(request)
 
         assert response.status_code == 200

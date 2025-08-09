@@ -59,7 +59,7 @@ class TestRequest:
         """Test basic request properties."""
         scope = self.create_test_scope("POST", "/api/data")
         body = b'{"name": "test"}'
-        request = Request(scope, body)
+        request = Request.from_bytes(scope, body)
 
         assert request.method == "POST"
         assert request.path == "/api/data"
@@ -68,7 +68,7 @@ class TestRequest:
     def test_query_params_parsing(self):
         """Test query parameter parsing."""
         scope = self.create_test_scope(query_string=b"name=John&age=30&city=NYC")
-        request = Request(scope, b"")
+        request = Request.from_bytes(scope, b"")
 
         assert request.query_params == {"name": "John", "age": "30", "city": "NYC"}
         assert request.get_query_param("name") == "John"
@@ -78,7 +78,7 @@ class TestRequest:
     def test_empty_query_params(self):
         """Test empty query parameters."""
         scope = self.create_test_scope(query_string=b"")
-        request = Request(scope, b"")
+        request = Request.from_bytes(scope, b"")
 
         assert request.query_params == {}
         assert request.get_query_param("any", "default") == "default"
@@ -91,7 +91,7 @@ class TestRequest:
             [b"X-Custom-Header", b"custom-value"],
         ]
         scope = self.create_test_scope(headers=headers)
-        request = Request(scope, b"")
+        request = Request.from_bytes(scope, b"")
 
         # Headers are stored with lowercase keys
         assert request.headers["content-type"] == "application/json"
@@ -103,7 +103,7 @@ class TestRequest:
         # JSON content type
         headers = [[b"content-type", b"application/json"]]
         scope = self.create_test_scope(headers=headers)
-        request = Request(scope, b"")
+        request = Request.from_bytes(scope, b"")
 
         assert request.content_type == "application/json"
         assert request.is_json() is True
@@ -111,14 +111,14 @@ class TestRequest:
         # HTML content type
         headers = [[b"content-type", b"text/html"]]
         scope = self.create_test_scope(headers=headers)
-        request = Request(scope, b"")
+        request = Request.from_bytes(scope, b"")
 
         assert request.content_type == "text/html"
         assert request.is_json() is False
 
         # No content type
         scope = self.create_test_scope()
-        request = Request(scope, b"")
+        request = Request.from_bytes(scope, b"")
 
         assert request.content_type is None
         assert request.is_json() is False
@@ -128,7 +128,7 @@ class TestRequest:
         headers = [[b"content-type", b"application/json"]]
         scope = self.create_test_scope(headers=headers)
         body = b'{"name": "John", "age": 30, "active": true}'
-        request = Request(scope, body)
+        request = Request.from_bytes(scope, body)
 
         data = request.json()
         assert data == {"name": "John", "age": 30, "active": True}
@@ -138,7 +138,7 @@ class TestRequest:
         headers = [[b"content-type", b"application/json"]]
         scope = self.create_test_scope(headers=headers)
         body = b'{"invalid": json}'
-        request = Request(scope, body)
+        request = Request.from_bytes(scope, body)
 
         with pytest.raises(ValueError):
             request.json()
@@ -147,7 +147,7 @@ class TestRequest:
         """Test JSON parsing with empty body."""
         headers = [[b"content-type", b"application/json"]]
         scope = self.create_test_scope(headers=headers)
-        request = Request(scope, b"")
+        request = Request.from_bytes(scope, b"")
 
         with pytest.raises(ValueError):
             request.json()

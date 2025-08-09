@@ -234,6 +234,7 @@ class FastASGI:
             receive: Callable to receive messages from the client
             send: Callable to send messages to the client
         """
+
         if scope["type"] == "http":
             await self._handle_http(scope, receive, send)
         elif scope["type"] == "lifespan":
@@ -281,14 +282,13 @@ class FastASGI:
         Handle HTTP requests using the middleware stack and routing system.
         """
         try:
-            # Collect the complete request body
-            body = await self._receive_complete_message(receive)
-
-            # Create Request object
-            request = Request(scope, body)
+            # Build Request which loads body from the ASGI receive channel
+            request = await Request.from_receive(scope, receive)
 
             # Process request through pre-built middleware stack
-            response = await self._app_with_middleware(request)  # noqa
+            if self._app_with_middleware is None:
+                raise RuntimeError("Middleware chain not built")
+            response = await self._app_with_middleware(request)  # type: ignore[misc]
             # Convert response to ASGI format and send
             asgi_response = response.to_asgi_response()
             await self._send_response(send, asgi_response)
@@ -302,27 +302,7 @@ class FastASGI:
             asgi_response = error_response.to_asgi_response()
             await self._send_response(send, asgi_response)
 
-    async def _receive_complete_message(self, receive: Callable) -> bytes:
-        """
-        Receive the complete HTTP request body, handling multipart messages.
-        """
-        body_parts = []
-
-        while True:
-            message = await receive()
-
-            if message["type"] == "http.request":
-                body_part = message.get("body", b"")
-                if body_part:
-                    body_parts.append(body_part)
-
-                # Check if there are more body parts
-                if not message.get("more_body", False):
-                    break
-            elif message["type"] == "http.disconnect":
-                break
-
-        return b"".join(body_parts)
+    # Request body reception is handled within Request.from_asgi
 
     async def _send_response(self, send: Callable, asgi_response: Dict[str, Any]):
         """

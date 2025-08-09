@@ -26,7 +26,7 @@ class TestRequestCookies:
     def test_no_cookies(self):
         """Test request with no cookies."""
         scope = self.create_test_scope()
-        request = Request(scope, b"")
+        request = Request.from_bytes(scope, b"")
 
         assert request.cookies == {}
         assert request.get_cookie("any", "default") == "default"
@@ -35,7 +35,7 @@ class TestRequestCookies:
         """Test request with a single cookie."""
         headers = [[b"cookie", b"session=abc123"]]
         scope = self.create_test_scope(headers=headers)
-        request = Request(scope, b"")
+        request = Request.from_bytes(scope, b"")
 
         assert request.cookies == {"session": "abc123"}
         assert request.get_cookie("session") == "abc123"
@@ -45,7 +45,7 @@ class TestRequestCookies:
         """Test request with multiple cookies."""
         headers = [[b"cookie", b"session=abc123; user_id=456; theme=dark"]]
         scope = self.create_test_scope(headers=headers)
-        request = Request(scope, b"")
+        request = Request.from_bytes(scope, b"")
 
         expected_cookies = {"session": "abc123", "user_id": "456", "theme": "dark"}
         assert request.cookies == expected_cookies
@@ -57,7 +57,7 @@ class TestRequestCookies:
         """Test cookies with spaces around values."""
         headers = [[b"cookie", b"name1=value1;  name2=value2  ; name3 = value3"]]
         scope = self.create_test_scope(headers=headers)
-        request = Request(scope, b"")
+        request = Request.from_bytes(scope, b"")
 
         expected_cookies = {"name1": "value1", "name2": "value2", "name3": "value3"}
         assert request.cookies == expected_cookies
@@ -66,7 +66,7 @@ class TestRequestCookies:
         """Test handling of duplicate cookie names (last wins)."""
         headers = [[b"cookie", b"name=first; name=second; name=third"]]
         scope = self.create_test_scope(headers=headers)
-        request = Request(scope, b"")
+        request = Request.from_bytes(scope, b"")
 
         # Last value should win
         assert request.cookies == {"name": "third"}
@@ -89,7 +89,7 @@ class TestRequestMultiValueQueryParams:
     def test_no_query_params(self):
         """Test request with no query parameters."""
         scope = self.create_test_scope()
-        request = Request(scope, b"")
+        request = Request.from_bytes(scope, b"")
 
         assert request.query_params == {}
         assert request.query_params_multi == {}
@@ -98,7 +98,7 @@ class TestRequestMultiValueQueryParams:
     def test_single_value_params(self):
         """Test query parameters with single values."""
         scope = self.create_test_scope(b"name=John&age=30&city=NYC")
-        request = Request(scope, b"")
+        request = Request.from_bytes(scope, b"")
 
         # Single value access
         assert request.query_params == {"name": "John", "age": "30", "city": "NYC"}
@@ -116,7 +116,7 @@ class TestRequestMultiValueQueryParams:
     def test_multi_value_params(self):
         """Test query parameters with multiple values."""
         scope = self.create_test_scope(b"tags=python&tags=web&tags=api&limit=10")
-        request = Request(scope, b"")
+        request = Request.from_bytes(scope, b"")
 
         # Single value access (first value)
         assert request.query_params["tags"] == "python"
@@ -132,7 +132,7 @@ class TestRequestMultiValueQueryParams:
     def test_empty_value_params(self):
         """Test query parameters with empty values."""
         scope = self.create_test_scope(b"empty=&name=John&blank=")
-        request = Request(scope, b"")
+        request = Request.from_bytes(scope, b"")
 
         assert request.query_params["empty"] == ""
         assert request.query_params["blank"] == ""
@@ -142,7 +142,7 @@ class TestRequestMultiValueQueryParams:
     def test_missing_params(self):
         """Test accessing missing query parameters."""
         scope = self.create_test_scope(b"name=John")
-        request = Request(scope, b"")
+        request = Request.from_bytes(scope, b"")
 
         assert request.get_query_param("missing", "default") == "default"
         assert request.get_query_params("missing", ["default"]) == ["default"]

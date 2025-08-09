@@ -64,9 +64,8 @@ class TestRoute:
             "query_string": b"",
             "headers": [],
         }
-        request = Request(scope, b"")
-
-        response = await route.handle(request)
+    request = Request.from_bytes(scope, b"")
+    response = await route.handle(request)
         assert isinstance(response, Response)
 
 
