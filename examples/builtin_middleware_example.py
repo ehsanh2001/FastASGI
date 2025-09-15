@@ -3,7 +3,7 @@ Example demonstrating FastASGI's builtin middleware.
 Compatible with FastAPI middleware interfaces.
 """
 
-from fastasgi import FastASGI, text_response, json_response
+from fastasgi import FastASGI, text_response, json_response, Request
 from fastasgi.middleware import (
     CORSMiddleware,
     GZipMiddleware,
@@ -34,14 +34,14 @@ app.add_middleware(TrustedHostMiddleware(allowed_hosts=["localhost", "*.myapp.co
 
 
 @app.get("/")
-async def home(request):
+async def home(request: Request):
     """Home endpoint with large response for GZip testing."""
     large_content = "Hello World! " * 100  # Large enough to trigger compression
     return text_response(large_content)
 
 
 @app.get("/api/data")
-async def api_data(request):
+async def api_data(request: Request):
     """API endpoint that will have CORS headers."""
     data = {
         "message": "This response will have CORS headers",

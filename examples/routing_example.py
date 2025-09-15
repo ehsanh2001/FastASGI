@@ -4,7 +4,7 @@ This example shows how to use @app.get, @app.post decorators and hierarchical ro
 """
 
 import json
-from fastasgi import FastASGI, APIRouter, json_response, text_response
+from fastasgi import FastASGI, APIRouter, json_response, text_response, Request
 
 # Create the main application
 app = FastASGI()
@@ -15,12 +15,12 @@ api_router = APIRouter()
 
 # Main application routes using decorators
 @app.get("/")
-async def home(request):
+async def home(request: Request):
     return text_response("Welcome to FastASGI with Routing!")
 
 
 @app.post("/echo")
-async def echo(request):
+async def echo(request: Request):
     try:
         body = request.body()
         data = json.loads(body.decode()) if body else {}
@@ -31,7 +31,7 @@ async def echo(request):
 
 # API router routes
 @api_router.get("/users")
-async def get_users(request):
+async def get_users(request: Request):
     users = [
         {"id": 1, "name": "Alice"},
         {"id": 2, "name": "Bob"},
@@ -40,7 +40,7 @@ async def get_users(request):
 
 
 @api_router.post("/users")
-async def create_user(request):
+async def create_user(request: Request):
     try:
         body = request.body()
         data = json.loads(body.decode()) if body else {}
@@ -56,12 +56,12 @@ app.include_router(api_router, prefix="/api")
 
 # Additional routes for testing
 @app.get("/health")
-async def health_check(request):
+async def health_check(request: Request):
     return json_response({"status": "healthy"})
 
 
 @app.get("/query")
-async def query_params(request):
+async def query_params(request: Request):
     params = dict(request.query_params)
     return json_response({"query_params": params})
 

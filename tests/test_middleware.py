@@ -17,7 +17,7 @@ class TestMiddlewareChain:
         assert stack.count() == 0
 
         # Build with empty stack should return the endpoint unchanged
-        async def endpoint(request):
+        async def endpoint(request: Request):
             return Response("endpoint")
 
         app = stack.build(endpoint)
@@ -58,7 +58,7 @@ class TestMiddlewareChain:
             response.headers["X-Logged"] = "true"
             return response
 
-        async def endpoint(request):
+        async def endpoint(request: Request):
             return Response("Hello")
 
         stack.add(logging_middleware)
@@ -106,7 +106,7 @@ class TestMiddlewareChain:
             response.headers["X-C"] = "processed"
             return response
 
-        async def endpoint(request):
+        async def endpoint(request: Request):
             execution_order.append("endpoint")
             return Response("Hello")
 
@@ -157,7 +157,7 @@ class TestMiddlewareChain:
             response.headers["X-Logged"] = "true"
             return response
 
-        async def endpoint(request):
+        async def endpoint(request: Request):
             return Response("Authorized content")
 
         stack.add(auth_middleware)
@@ -228,7 +228,7 @@ class TestFastASGIMiddleware:
             return response
 
         @app.get("/")
-        async def home(request):
+        async def home(request: Request):
             return text_response("Hello")
 
         await app._build_middleware_chain()  # Ensure middleware chain is built
@@ -272,7 +272,7 @@ class TestFastASGIMiddleware:
         app.add_middleware(custom_middleware)
 
         @app.get("/")
-        async def home(request):
+        async def home(request: Request):
             return text_response("Hello")
 
         await app._build_middleware_chain()  # Ensure middleware chain is built
@@ -326,7 +326,7 @@ class TestFastASGIMiddleware:
             return response
 
         @app.get("/")
-        async def home(request):
+        async def home(request: Request):
             execution_order.append("handler")
             return text_response("Hello")
 

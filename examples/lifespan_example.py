@@ -20,13 +20,14 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from fastasgi.fastasgi import FastASGI
 from fastasgi.response import json_response
+from fastasgi.request import Request
 
 
 # Create FastASGI application
 app = FastASGI()
 
 # Simple application state
-app.state = type('State', (), {})()
+app.state = type("State", (), {})()
 app.state.start_time = None
 app.state.database_connected = False
 
@@ -62,25 +63,28 @@ async def cleanup():
 
 # Simple route
 @app.get("/")
-async def root(request):
+async def root(request: Request):
     """Root endpoint showing application status."""
     uptime = time.time() - app.state.start_time if app.state.start_time else 0
-    
-    return json_response({
-        "message": "Hello from FastASGI with Lifespan Events!",
-        "status": "running",
-        "uptime_seconds": round(uptime, 2),
-        "database_connected": app.state.database_connected,
-        "timestamp": time.time()
-    })
+
+    return json_response(
+        {
+            "message": "Hello from FastASGI with Lifespan Events!",
+            "status": "running",
+            "uptime_seconds": round(uptime, 2),
+            "database_connected": app.state.database_connected,
+            "timestamp": time.time(),
+        }
+    )
 
 
 if __name__ == "__main__":
     import uvicorn
+
     print("Starting FastASGI with lifespan events...")
     print("Startup handlers: connect_database, initialize_app")
     print("Shutdown handlers: cleanup")
     print("Endpoint: GET /")
     print("Visit: http://localhost:8000")
-    
+
     uvicorn.run(app, host="127.0.0.1", port=8000)
