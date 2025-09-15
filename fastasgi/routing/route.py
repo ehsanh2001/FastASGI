@@ -24,7 +24,7 @@ class Route:
                    for root ("/"). Examples: "/users", "/users/{id:int}", "/files/{filepath:multipath}"
 
         handler (Callable): Async function that handles requests matching this route.
-                           Can accept path parameters and optional 'request' parameter.
+                           Can accept path parameters and Request-annotated parameters.
 
         methods (Set[str]): Set of HTTP methods this route accepts (e.g., {"GET", "POST"}).
                            Defaults to {"GET"} if not specified.
@@ -46,13 +46,13 @@ class Route:
                                        Multipath parameters can match multiple segments.
 
         handler_params (list[str]): List of all parameter names in the handler function signature.
-                                   Includes both path parameters and 'request' if present.
+                                   Includes both path parameters and any typed parameters.
 
-        expects_request (bool): True if handler function has a 'request' parameter.
-                               Controls whether Request object is passed to handler.
+        request_params (list[str]): List of parameter names that expect Request type injection.
+                                   Only includes parameters with explicit Request type annotations.
 
-        handler_path_params (list[str]): List of path parameter names from handler signature.
-                                        Excludes 'request' parameter.
+        handler_path_params (set[str]): Set of path parameter names from handler signature.
+                                       Excludes typed injection parameters.
 
         expected_path_params (list[str]): List of path parameters that exist in both
                                          the route pattern and handler signature.
@@ -94,8 +94,8 @@ class Route:
         self.segment_count: int = 0
         self.has_multipath_parameter: bool = False
         self.handler_params: list[str] = []
-        self.expects_request: bool = False
-        self.handler_path_params: list[str] = []
+        self.request_params: list[str] = []
+        self.handler_path_params: set[str] = set()
         self.expected_path_params: list[str] = []
 
         if invalid_methods := self._invalid_http_methods():
@@ -117,19 +117,22 @@ class Route:
         """
         Inspect the handler function signature to determine parameter injection requirements.
 
-        This sets up automatic injection of path parameters and optional request parameter.
-        Also validates that path parameters in the route have corresponding handler parameters.
+        Uses type annotations to determine what should be injected:
+        - Parameters annotated with Request type get Request object injection
+        - Parameters matching route path parameters get path parameter injection
         """
         sig = inspect.signature(self.handler)
         self.handler_params = list(sig.parameters.keys())
+        self.request_params = []
+        self.handler_path_params = set()
 
-        # Check if handler expects request parameter
-        self.expects_request = "request" in self.handler_params
-
-        # Get path parameter names from handler (excluding 'request')
-        self.handler_path_params = [
-            param for param in self.handler_params if param != "request"
-        ]
+        # Analyze each parameter based on its type annotation
+        for param_name, param in sig.parameters.items():
+            if param.annotation == Request:
+                self.request_params.append(param_name)
+            elif param_name in self.param_types:
+                # Parameter matches a route path parameter
+                self.handler_path_params.add(param_name)
 
         # Get expected path parameter names that actually exist in route
         self.expected_path_params = [
@@ -159,24 +162,23 @@ class Route:
         All route path parameters MUST have corresponding handler parameters.
         Handler path parameters MUST exist in the route pattern.
         """
-        route_params = set(self.param_types.keys())
-        handler_path_params = set(self.handler_path_params)
+        path_params = set(self.param_types.keys())
 
         # All route path parameters MUST have corresponding handler parameters
-        missing_in_handler = route_params - handler_path_params
+        missing_in_handler = path_params - self.handler_path_params
         if missing_in_handler:
             raise ValueError(
                 f"Route pattern '{self.path}' defines path parameters {missing_in_handler} "
                 f"but handler function does not have corresponding parameters. "
-                f"Handler parameters: {[p for p in self.handler_params if p != 'request']}"
+                f"Handler path parameters: {self.handler_path_params}"
             )
 
         # Check that handler path parameters exist in the route
-        missing_in_route = handler_path_params - route_params
+        missing_in_route = self.handler_path_params - path_params
         if missing_in_route:
             raise ValueError(
                 f"Handler function expects path parameters {missing_in_route} "
-                f"but route pattern '{self.path}' only defines {route_params}"
+                f"but route pattern '{self.path}' only defines {path_params}"
             )
 
     def _validate_parameter_types(self, sig: inspect.Signature) -> None:
@@ -528,9 +530,9 @@ class Route:
         # Build arguments for the handler function
         kwargs = {}
 
-        # Add request parameter if the handler expects it
-        if self.expects_request:
-            kwargs["request"] = request
+        # Inject Request objects for parameters annotated with Request type
+        for param_name in self.request_params:
+            kwargs[param_name] = request
 
         # Add path parameters that the handler expects
         for param_name in self.expected_path_params:

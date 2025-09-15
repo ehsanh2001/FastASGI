@@ -13,7 +13,7 @@ import os
 # Add the parent directory to the path so we can import fastasgi
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from fastasgi import FastASGI, APIRouter
+from fastasgi import FastASGI, APIRouter, Request
 from fastasgi.response import Response, text_response
 
 
@@ -29,12 +29,12 @@ users_router = APIRouter(prefix="/users")
 
 # Basic routes on main app
 @app.get("/")
-async def root(request):
+async def root(request: Request):
     return text_response("Welcome to Advanced FastASGI!")
 
 
 @app.get("/health")
-async def health_check(request):
+async def health_check(request: Request):
     return text_response("OK")
 
 
@@ -103,7 +103,7 @@ async def get_user_profile(user_id: int):
 
 
 @users_router.post("/{user_id:int}/posts")
-async def create_user_post(request, user_id: int):
+async def create_user_post(request: Request, user_id: int):
     body = request.body()
     return text_response(f"Created post for user {user_id}: {body.decode()}")
 

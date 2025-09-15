@@ -14,7 +14,7 @@ class TestRoute:
     """Test the Route class."""
 
     def test_route_creation(self):
-        async def handler(request):
+        async def handler(request: Request):
             return text_response("test")
 
         route = Route("/test", handler, methods={"GET"})
@@ -23,7 +23,7 @@ class TestRoute:
         assert route.methods == {"GET"}
 
     def test_route_matches_exact_path(self):
-        async def handler(request):
+        async def handler(request: Request):
             return text_response("test")
 
         route = Route("/test", handler, methods={"GET"})
@@ -38,7 +38,7 @@ class TestRoute:
         assert matches == False
 
     def test_route_matches_default_methods(self):
-        async def handler(request):
+        async def handler(request: Request):
             return text_response("test")
 
         # Test default methods (should be GET)
@@ -52,7 +52,7 @@ class TestRoute:
 
     @pytest.mark.asyncio
     async def test_route_handle(self):
-        async def handler(request):
+        async def handler(request: Request):
             return text_response("handled")
 
         route = Route("/test", handler, methods={"GET"})
@@ -82,7 +82,7 @@ class TestAPIRouter:
         router = APIRouter()
 
         @router.get("/test")
-        async def handler(request):
+        async def handler(request: Request):
             return text_response("test")
 
         assert len(router.routes) == 1
@@ -93,7 +93,7 @@ class TestAPIRouter:
         router = APIRouter()
 
         @router.post("/test")
-        async def handler(request):
+        async def handler(request: Request):
             return text_response("test")
 
         assert len(router.routes) == 1
@@ -103,7 +103,7 @@ class TestAPIRouter:
         router = APIRouter()
 
         @router.route("/test", methods={"GET", "POST"})
-        async def handler(request):
+        async def handler(request: Request):
             return text_response("test")
 
         assert len(router.routes) == 1
@@ -121,7 +121,7 @@ class TestFastASGI:
         app = FastASGI()
 
         @app.get("/test")
-        async def handler(request):
+        async def handler(request: Request):
             return text_response("test")
 
         assert len(app.api_router.routes) == 1
@@ -133,7 +133,7 @@ class TestFastASGI:
         api_router = APIRouter()
 
         @api_router.get("/users")
-        async def get_users(request):
+        async def get_users(request: Request):
             return json_response({"users": []})
 
         app.include_router(api_router, prefix="/api")
@@ -147,7 +147,7 @@ class TestFastASGI:
         app = FastASGI()
 
         @app.get("/test")
-        async def handler(request):
+        async def handler(request: Request):
             return text_response("success")
 
         await app._build_middleware_chain()  # Ensure middleware chain is built
@@ -191,18 +191,18 @@ class TestIntegration:
 
         # Main app routes
         @app.get("/")
-        async def home(request):
+        async def home(request: Request):
             return text_response("home")
 
         @app.get("/hello")
-        async def hello(request):
+        async def hello(request: Request):
             return text_response("Hello, World!")
 
         # API router
         api_router = APIRouter()
 
         @api_router.get("/users")
-        async def get_users(request):
+        async def get_users(request: Request):
             return json_response({"users": []})
 
         app.include_router(api_router, prefix="/api")
