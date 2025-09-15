@@ -143,10 +143,21 @@ class Route:
         """
         Validate that path parameters and handler parameters are consistent.
 
-        All route path parameters MUST have corresponding handler parameters.
-
         Args:
             sig: Handler function signature
+        """
+        # Check that all required parameters exist in both route and handler
+        self._validate_parameter_existence()
+
+        # Validate parameter types if annotated
+        self._validate_parameter_types(sig)
+
+    def _validate_parameter_existence(self) -> None:
+        """
+        Validate that path parameters exist in both route pattern and handler signature.
+
+        All route path parameters MUST have corresponding handler parameters.
+        Handler path parameters MUST exist in the route pattern.
         """
         route_params = set(self.param_types.keys())
         handler_path_params = set(self.handler_path_params)
@@ -167,9 +178,6 @@ class Route:
                 f"Handler function expects path parameters {missing_in_route} "
                 f"but route pattern '{self.path}' only defines {route_params}"
             )
-
-        # Validate parameter types if annotated
-        self._validate_parameter_types(sig)
 
     def _validate_parameter_types(self, sig: inspect.Signature) -> None:
         """
