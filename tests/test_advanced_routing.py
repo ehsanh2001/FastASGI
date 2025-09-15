@@ -21,14 +21,14 @@ class TestPathParameters:
             return text_response(f"User {user_id}, type: {type(user_id).__name__}")
 
         # Test valid integer
-        result = app.router.find_route("/users/123", "GET")
+        result = app.api_router.find_route("/users/123", "GET")
         assert result is not None
         route, params = result
         assert params["user_id"] == 123
         assert isinstance(params["user_id"], int)
 
         # Test invalid integer (should not match)
-        result = app.router.find_route("/users/abc", "GET")
+        result = app.api_router.find_route("/users/abc", "GET")
         assert result is None
 
     def test_string_parameter(self):
@@ -39,7 +39,7 @@ class TestPathParameters:
         async def get_user(username: str):
             return text_response(f"User {username}")
 
-        result = app.router.find_route("/users/john", "GET")
+        result = app.api_router.find_route("/users/john", "GET")
         assert result is not None
         route, params = result
         assert params["username"] == "john"
@@ -54,14 +54,14 @@ class TestPathParameters:
             return text_response(f"Session {session_id}")
 
         test_uuid = "123e4567-e89b-12d3-a456-426614174000"
-        result = app.router.find_route(f"/sessions/{test_uuid}", "GET")
+        result = app.api_router.find_route(f"/sessions/{test_uuid}", "GET")
         assert result is not None
         route, params = result
         assert params["session_id"] == uuid.UUID(test_uuid)
         assert isinstance(params["session_id"], uuid.UUID)
 
         # Test invalid UUID
-        result = app.router.find_route("/sessions/invalid-uuid", "GET")
+        result = app.api_router.find_route("/sessions/invalid-uuid", "GET")
         assert result is None
 
     def test_multiple_parameters(self):
@@ -72,7 +72,7 @@ class TestPathParameters:
         async def get_post(user_id: int, post_id: int):
             return text_response("Post")
 
-        result = app.router.find_route("/users/123/posts/456", "GET")
+        result = app.api_router.find_route("/users/123/posts/456", "GET")
         assert result is not None
         route, params = result
         assert params["user_id"] == 123
@@ -86,42 +86,44 @@ class TestPathParameters:
         async def get_item(item_id: str):
             return text_response("Item")
 
-        result = app.router.find_route("/items/abc123", "GET")
+        result = app.api_router.find_route("/items/abc123", "GET")
         assert result is not None
         route, params = result
         assert params["item_id"] == "abc123"
         assert isinstance(params["item_id"], str)
 
     def test_path_parameter(self):
-        """Test path parameter that captures multiple path segments."""
+        """Test multipath parameter that captures multiple path segments."""
         app = FastASGI()
 
-        @app.get("/files/{filepath:path}")
+        @app.get("/files/{filepath:multipath}")
         async def get_file(filepath: str):
             return text_response(f"File: {filepath}")
 
         # Test single segment
-        result = app.router.find_route("/files/document.txt", "GET")
+        result = app.api_router.find_route("/files/document.txt", "GET")
         assert result is not None
         route, params = result
         assert params["filepath"] == "document.txt"
         assert isinstance(params["filepath"], str)
 
         # Test multiple segments (path-like)
-        result = app.router.find_route("/files/folder/subfolder/document.txt", "GET")
+        result = app.api_router.find_route(
+            "/files/folder/subfolder/document.txt", "GET"
+        )
         assert result is not None
         route, params = result
         assert params["filepath"] == "folder/subfolder/document.txt"
         assert isinstance(params["filepath"], str)
 
         # Test empty path
-        result = app.router.find_route("/files/", "GET")
+        result = app.api_router.find_route("/files/", "GET")
         assert result is not None
         route, params = result
         assert params["filepath"] == ""
 
         # Test path with special characters
-        result = app.router.find_route("/files/my-file_v2.1.txt", "GET")
+        result = app.api_router.find_route("/files/my-file_v2.1.txt", "GET")
         assert result is not None
         route, params = result
         assert params["filepath"] == "my-file_v2.1.txt"
@@ -134,7 +136,7 @@ class TestRoutePriority:
         """Test that higher priority routes are matched first."""
         app = FastASGI()
 
-        @app.get("/test/{path:path}", priority=1)
+        @app.get("/test/{path:multipath}", priority=1)
         async def low_priority(path: str):
             return text_response("Low priority")
 
@@ -147,20 +149,20 @@ class TestRoutePriority:
             return text_response("Medium priority")
 
         # Should match high priority specific route
-        result = app.router.find_route("/test/specific", "GET")
+        result = app.api_router.find_route("/test/specific", "GET")
         assert result is not None
         route, params = result
         assert route.priority == 10
 
         # Should match medium priority single parameter
-        result = app.router.find_route("/test/other", "GET")
+        result = app.api_router.find_route("/test/other", "GET")
         assert result is not None
         route, params = result
         assert route.priority == 5
         assert params["segment"] == "other"
 
         # Should match low priority path parameter
-        result = app.router.find_route("/test/deep/nested/path", "GET")
+        result = app.api_router.find_route("/test/deep/nested/path", "GET")
         assert result is not None
         route, params = result
         assert route.priority == 1
@@ -194,7 +196,7 @@ class TestRouterPrefix:
         app.include_router(api_router, prefix="/v1")
 
         # Should be accessible at /v1/api/users
-        result = app.router.find_route("/v1/api/users", "GET")
+        result = app.api_router.find_route("/v1/api/users", "GET")
         assert result is not None
         route, params = result
 
@@ -221,13 +223,13 @@ class TestRouterPrefix:
         app.include_router(admin_router, prefix="/api")
 
         # Should be accessible at /api/admin/users/123
-        result = app.router.find_route("/api/admin/users/123", "GET")
+        result = app.api_router.find_route("/api/admin/users/123", "GET")
         assert result is not None
         route, params = result
         assert params["user_id"] == 123
 
         # Should be accessible at /api/admin/dashboard
-        result = app.router.find_route("/api/admin/dashboard", "GET")
+        result = app.api_router.find_route("/api/admin/dashboard", "GET")
         assert result is not None
         route, params = result
 
@@ -248,13 +250,13 @@ class TestRouteMatching:
             return text_response("User by ID")
 
         # Should match exact route
-        result = app.router.find_route("/users/me", "GET")
+        result = app.api_router.find_route("/users/me", "GET")
         assert result is not None
         route, params = result
         assert route.priority == 10
 
         # Should match parameter route
-        result = app.router.find_route("/users/123", "GET")
+        result = app.api_router.find_route("/users/123", "GET")
         assert result is not None
         route, params = result
         assert route.priority == 5
@@ -273,19 +275,19 @@ class TestRouteMatching:
             return text_response("POST User")
 
         # Test GET
-        result = app.router.find_route("/users/123", "GET")
+        result = app.api_router.find_route("/users/123", "GET")
         assert result is not None
         route, params = result
         assert "GET" in route.methods
 
         # Test POST
-        result = app.router.find_route("/users/123", "POST")
+        result = app.api_router.find_route("/users/123", "POST")
         assert result is not None
         route, params = result
         assert "POST" in route.methods
 
         # Test unsupported method
-        result = app.router.find_route("/users/123", "DELETE")
+        result = app.api_router.find_route("/users/123", "DELETE")
         assert result is None
 
 
@@ -305,7 +307,7 @@ class TestErrorCases:
         """Test that wildcard patterns are rejected with helpful error."""
         with pytest.raises(
             ValueError,
-            match="Wildcard patterns.*no longer supported.*Use path parameters",
+            match="Wildcard patterns.*no longer supported.*Use multipath parameters",
         ):
             app = FastASGI()
 
@@ -315,7 +317,7 @@ class TestErrorCases:
 
         with pytest.raises(
             ValueError,
-            match="Wildcard patterns.*no longer supported.*Use path parameters",
+            match="Wildcard patterns.*no longer supported.*Use multipath parameters",
         ):
             app = FastASGI()
 
@@ -332,8 +334,8 @@ class TestErrorCases:
             return text_response("Users")
 
         # Both should match the same route
-        result1 = app.router.find_route("/users", "GET")
-        result2 = app.router.find_route("/users/", "GET")
+        result1 = app.api_router.find_route("/users", "GET")
+        result2 = app.api_router.find_route("/users/", "GET")
 
         assert result1 is not None
         assert result2 is not None

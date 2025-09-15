@@ -34,7 +34,6 @@ class APIRouter:
         path: str,
         handler: Callable[..., Awaitable[Response]],
         methods: Optional[Set[str]] = None,
-        name: Optional[str] = None,
         priority: int = 0,
     ) -> Route:
         """
@@ -44,7 +43,6 @@ class APIRouter:
             path: URL path pattern (supports {param}, {param:type}, *, **)
             handler: Async function that handles the request
             methods: Set of HTTP methods this route accepts
-            name: Optional name for the route
             priority: Route priority for matching order (higher = checked first)
 
         Returns:
@@ -53,7 +51,7 @@ class APIRouter:
         # Apply router prefix to the path
         full_path = self.prefix + path if path != "/" else (self.prefix or "/")
 
-        route = Route(full_path, handler, methods, name, priority)
+        route = Route(full_path, handler, methods, priority)
         self.routes.append(route)
 
         # Sort routes by priority (higher priority first), then by path length (longer first)
@@ -80,9 +78,7 @@ class APIRouter:
             # We need to add our combined prefix to it
             new_path = combined_prefix + route.path if combined_prefix else route.path
 
-            new_route = Route(
-                new_path, route.handler, route.methods, route.name, route.priority
-            )
+            new_route = Route(new_path, route.handler, route.methods, route.priority)
             self.routes.append(new_route)
 
         # Re-sort routes after inclusion
@@ -171,7 +167,6 @@ class APIRouter:
         self,
         path: str,
         methods: Optional[Set[str]] = None,
-        name: Optional[str] = None,
         priority: int = 0,
     ):
         """
@@ -180,7 +175,6 @@ class APIRouter:
         Args:
             path: URL path pattern (supports {param}, {param:type}, *, **)
             methods: Set of HTTP methods this route accepts
-            name: Optional name for the route
             priority: Route priority for matching order (higher = checked first)
 
         Returns:
@@ -190,38 +184,38 @@ class APIRouter:
         def decorator(
             handler: Callable[..., Awaitable[Response]],
         ) -> Callable[..., Awaitable[Response]]:
-            self.add_route(path, handler, methods, name, priority)
+            self.add_route(path, handler, methods, priority)
             return handler
 
         return decorator
 
-    def get(self, path: str, name: Optional[str] = None, priority: int = 0):
+    def get(self, path: str, priority: int = 0):
         """Decorator for GET routes."""
-        return self.route(path, {"GET"}, name, priority)
+        return self.route(path, {"GET"}, priority)
 
-    def post(self, path: str, name: Optional[str] = None, priority: int = 0):
+    def post(self, path: str, priority: int = 0):
         """Decorator for POST routes."""
-        return self.route(path, {"POST"}, name, priority)
+        return self.route(path, {"POST"}, priority)
 
-    def put(self, path: str, name: Optional[str] = None, priority: int = 0):
+    def put(self, path: str, priority: int = 0):
         """Decorator for PUT routes."""
-        return self.route(path, {"PUT"}, name, priority)
+        return self.route(path, {"PUT"}, priority)
 
-    def delete(self, path: str, name: Optional[str] = None, priority: int = 0):
+    def delete(self, path: str, priority: int = 0):
         """Decorator for DELETE routes."""
-        return self.route(path, {"DELETE"}, name, priority)
+        return self.route(path, {"DELETE"}, priority)
 
-    def patch(self, path: str, name: Optional[str] = None, priority: int = 0):
+    def patch(self, path: str, priority: int = 0):
         """Decorator for PATCH routes."""
-        return self.route(path, {"PATCH"}, name, priority)
+        return self.route(path, {"PATCH"}, priority)
 
-    def head(self, path: str, name: Optional[str] = None, priority: int = 0):
+    def head(self, path: str, priority: int = 0):
         """Decorator for HEAD routes."""
-        return self.route(path, {"HEAD"}, name, priority)
+        return self.route(path, {"HEAD"}, priority)
 
-    def options(self, path: str, name: Optional[str] = None, priority: int = 0):
+    def options(self, path: str, priority: int = 0):
         """Decorator for OPTIONS routes."""
-        return self.route(path, {"OPTIONS"}, name, priority)
+        return self.route(path, {"OPTIONS"}, priority)
 
     def __repr__(self) -> str:
         route_count = len(self.routes)

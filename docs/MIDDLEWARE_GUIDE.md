@@ -46,11 +46,11 @@ Located in `fastasgi/middleware/middlewarechain.py`, the `MiddlewareChain` class
 class MiddlewareChain:
     def __init__(self):
         self.middleware_list: List[MiddlewareCallable] = []
-    
+
     def add_middleware(self, middleware: MiddlewareCallable) -> None:
         """Add middleware to the stack."""
         self.middleware_list.append(middleware)
-    
+
     def build(self, final_handler: Callable) -> Callable:
         """Build the complete middleware chain."""
         # Creates a new chain each time to ensure isolation
@@ -65,8 +65,8 @@ from typing import Protocol, Callable, Awaitable
 
 class MiddlewareCallable(Protocol):
     async def __call__(
-        self, 
-        request: Request, 
+        self,
+        request: Request,
         call_next: Callable[[Request], Awaitable[Response]]
     ) -> Response:
         ...
@@ -96,7 +96,7 @@ app = FastASGI()  # Empty chain created
 
 # 2. Middleware registration (chain rebuilt each time)
 app.add_middleware(middleware_a)  # Chain: [A] -> router
-app.add_middleware(middleware_b)  # Chain: [A, B] -> router  
+app.add_middleware(middleware_b)  # Chain: [A, B] -> router
 app.add_middleware(middleware_c)  # Chain: [A, B, C] -> router
 
 # 3. Request handling (uses pre-built chain)
@@ -108,25 +108,27 @@ app.add_middleware(middleware_c)  # Chain: [A, B, C] -> router
 The chain is rebuilt whenever middleware is added to ensure:
 
 1. **Immutable Chain**: Once built, the middleware chain becomes a
-               nested set of closures that cannot be modified. Adding new middleware
-               requires rebuilding the entire chain.
+   nested set of closures that cannot be modified. Adding new middleware
+   requires rebuilding the entire chain.
 
 2. **Correct Order**: Middleware must be applied in the same order as
-               registration to achieve the expected "onion" pattern where the
-               first registered middleware is the outermost layer.
+   registration to achieve the expected "onion" pattern where the
+   first registered middleware is the outermost layer.
 
 3. **Performance Trade-off**: While rebuilding seems expensive, it
-               only happens at application startup or during middleware registration.
-               The resulting chain executes with zero overhead per request.
+   only happens at application startup or during middleware registration.
+   The resulting chain executes with zero overhead per request.
 
 4. **Simplicity**: This approach keeps the middleware system simple
-               and predictable compared to alternatives like dynamic dispatch
-               or runtime chain modification.
+   and predictable compared to alternatives like dynamic dispatch
+   or runtime chain modification.
+
 ### Performance Characteristics
 
 This approach provides excellent performance because:
 
 #### **Single Build per Middleware Addition**
+
 ```python
 # Chain built once during setup
 app.add_middleware(logging_middleware)     # Build #1
@@ -138,6 +140,7 @@ app.add_middleware(cors_middleware)        # Build #3
 ```
 
 #### **Optimized Request Handling**
+
 ```python
 # Each request uses the same pre-built chain
 async def handle_request(request):
@@ -148,6 +151,7 @@ async def handle_request(request):
 ### Memory and State Management
 
 #### **Shared Chain, Isolated Execution**
+
 ```python
 # The chain structure is shared (memory efficient)
 chain = middleware_a -> middleware_b -> middleware_c -> route_handler
@@ -160,6 +164,7 @@ async def middleware_a(request, call_next):
 ```
 
 #### **No State Pollution**
+
 ```python
 # Each request execution is independent
 async def stateful_middleware(request, call_next):
@@ -175,9 +180,7 @@ async def stateful_middleware(request, call_next):
 ```python
 def add_middleware(self, middleware_func: Callable) -> None:
     """Add middleware and rebuild the chain."""
-    # Add metadata for debugging
-    setattr(middleware_func, '_is_fastasgi_middleware', True)
-    
+
     # Add to chain and rebuild immediately
     self.middleware_chain.add(middleware_func)
     self._app_with_middleware = self._build_middleware_chain()
@@ -203,7 +206,7 @@ if debug_mode:
 
 ```python
 app.add_middleware(middleware_a)  # Registered 1st
-app.add_middleware(middleware_b)  # Registered 2nd  
+app.add_middleware(middleware_b)  # Registered 2nd
 app.add_middleware(middleware_c)  # Registered 3rd
 
 # Request flow: A → B → C → Route Handler
@@ -215,6 +218,7 @@ app.add_middleware(middleware_c)  # Registered 3rd
 ### Optimization Strategies
 
 1. **Keep Middleware Lightweight**
+
 ```python
 # Good: Minimal processing
 async def fast_middleware(request, call_next):
@@ -228,20 +232,22 @@ async def slow_middleware(request, call_next):
 ```
 
 2. **Use Early Returns**
+
 ```python
 async def auth_middleware(request, call_next):
     # Early return for public endpoints
     if request.path.startswith('/public'):
         return await call_next(request)
-    
+
     # Auth logic only for protected routes
     if not valid_token(request):
         return unauthorized_response()
-    
+
     return await call_next(request)
 ```
 
 3. **Async-Friendly Operations**
+
 ```python
 async def database_middleware(request, call_next):
     # Use async database operations
@@ -249,7 +255,6 @@ async def database_middleware(request, call_next):
     request.state.user = user
     return await call_next(request)
 ```
-
 
 ## Middleware Chain Building and Testing
 
@@ -269,20 +274,20 @@ When writing tests for FastASGI applications with middleware, you may need to ma
 @pytest.mark.asyncio
 async def test_middleware_functionality():
     app = FastASGI()
-    
+
     @app.middleware()
     async def test_middleware(request, call_next):
         response = await call_next(request)
         response.headers["X-Test"] = "applied"
         return response
-    
+
     @app.get("/")
     async def home(request):
         return text_response("Hello")
-    
+
     # Build middleware chain before testing
     await app._build_middleware_chain()
-    
+
     # Now test the application...
     scope = {"type": "http", "method": "GET", "path": "/", ...}
     await app(scope, receive, send)

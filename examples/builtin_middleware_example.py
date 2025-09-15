@@ -54,8 +54,8 @@ async def api_data(request):
     return json_response(data)
 
 
-@app.options("/{path:path}")
-async def handle_preflight(request, path):
+@app.options("/{path:multipath}")
+async def handle_options_any_path(path: str):
     """Handle CORS preflight requests (handled by CORSMiddleware)."""
     # This will be automatically handled by CORSMiddleware
     pass

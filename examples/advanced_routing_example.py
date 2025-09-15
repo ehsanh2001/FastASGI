@@ -70,7 +70,7 @@ async def get_file(filename: str):
 
 
 # Path parameter for multiple segments (replaces catch-all)
-@api_router.get("/docs/{path:path}")
+@api_router.get("/docs/{path:multipath}")
 async def get_documentation(path: str):
     return text_response(f"Documentation: {path}")
 
@@ -86,7 +86,7 @@ async def medium_priority_parameter(segment: str):
     return text_response(f"Medium priority parameter: {segment}")
 
 
-@api_router.get("/special/{path:path}", priority=1)
+@api_router.get("/special/{path:multipath}", priority=1)
 async def low_priority_path_param(path: str):
     return text_response(f"Low priority path parameter: {path}")
 
@@ -104,7 +104,7 @@ async def get_user_profile(user_id: int):
 
 @users_router.post("/{user_id:int}/posts")
 async def create_user_post(request, user_id: int):
-    body = await request.body
+    body = request.body()
     return text_response(f"Created post for user {user_id}: {body.decode()}")
 
 

@@ -22,7 +22,7 @@ async def home(request):
 @app.post("/echo")
 async def echo(request):
     try:
-        body = request.body
+        body = request.body()
         data = json.loads(body.decode()) if body else {}
         return json_response({"echo": data})
     except json.JSONDecodeError:
@@ -42,7 +42,7 @@ async def get_users(request):
 @api_router.post("/users")
 async def create_user(request):
     try:
-        body = request.body
+        body = request.body()
         data = json.loads(body.decode()) if body else {}
         user = {"id": 999, "name": data.get("name", "Unknown")}
         return json_response({"created_user": user}, status_code=201)

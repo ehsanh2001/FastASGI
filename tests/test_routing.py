@@ -7,6 +7,7 @@ import pytest
 import json
 from fastasgi import FastASGI, APIRouter, Route, Request, Response
 from fastasgi.response import text_response, json_response
+from test_utils import create_request_with_body
 
 
 class TestRoute:
@@ -64,8 +65,9 @@ class TestRoute:
             "query_string": b"",
             "headers": [],
         }
-    request = Request.from_bytes(scope, b"")
-    response = await route.handle(request)
+        request = create_request_with_body(scope, b"")
+        await request.load_body()  # Load the body
+        response = await route.handle(request)
         assert isinstance(response, Response)
 
 
@@ -113,7 +115,7 @@ class TestFastASGI:
 
     def test_fastasgi_creation(self):
         app = FastASGI()
-        assert isinstance(app.router, APIRouter)
+        assert isinstance(app.api_router, APIRouter)
 
     def test_fastasgi_get_decorator(self):
         app = FastASGI()
@@ -122,9 +124,9 @@ class TestFastASGI:
         async def handler(request):
             return text_response("test")
 
-        assert len(app.router.routes) == 1
-        assert app.router.routes[0].path == "/test"
-        assert app.router.routes[0].methods == {"GET"}
+        assert len(app.api_router.routes) == 1
+        assert app.api_router.routes[0].path == "/test"
+        assert app.api_router.routes[0].methods == {"GET"}
 
     def test_fastasgi_include_router(self):
         app = FastASGI()
@@ -136,7 +138,7 @@ class TestFastASGI:
 
         app.include_router(api_router, prefix="/api")
 
-        result = app.router.find_route("/api/users", "GET")
+        result = app.api_router.find_route("/api/users", "GET")
         assert result is not None
         route, params = result
 
@@ -206,22 +208,22 @@ class TestIntegration:
         app.include_router(api_router, prefix="/api")
 
         # Test home route
-        result = app.router.find_route("/", "GET")
+        result = app.api_router.find_route("/", "GET")
         assert result is not None
         route, params = result
 
         # Test hello route
-        result = app.router.find_route("/hello", "GET")
+        result = app.api_router.find_route("/hello", "GET")
         assert result is not None
         route, params = result
 
         # Test API route with prefix
-        result = app.router.find_route("/api/users", "GET")
+        result = app.api_router.find_route("/api/users", "GET")
         assert result is not None
         route, params = result
 
         # Test non-existent route
-        route = app.router.find_route("/nonexistent", "GET")
+        route = app.api_router.find_route("/nonexistent", "GET")
         assert route is None
 
 

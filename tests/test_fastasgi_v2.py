@@ -55,35 +55,51 @@ class TestRequest:
             "headers": headers,
         }
 
-    def test_basic_request_properties(self):
+    @pytest.mark.asyncio
+    async def test_basic_request_properties(self):
         """Test basic request properties."""
         scope = self.create_test_scope("POST", "/api/data")
         body = b'{"name": "test"}'
-        request = Request.from_bytes(scope, body)
+
+        async def mock_receive():
+            return {"type": "http.request", "body": body, "more_body": False}
+
+        request = await Request.from_asgi(scope, mock_receive)
 
         assert request.method == "POST"
         assert request.path == "/api/data"
-        assert request.body == body
+        assert request.body() == body
 
-    def test_query_params_parsing(self):
+    @pytest.mark.asyncio
+    async def test_query_params_parsing(self):
         """Test query parameter parsing."""
         scope = self.create_test_scope(query_string=b"name=John&age=30&city=NYC")
-        request = Request.from_bytes(scope, b"")
+
+        async def mock_receive():
+            return {"type": "http.request", "body": b"", "more_body": False}
+
+        request = await Request.from_asgi(scope, mock_receive)
 
         assert request.query_params == {"name": "John", "age": "30", "city": "NYC"}
-        assert request.get_query_param("name") == "John"
-        assert request.get_query_param("age") == "30"
-        assert request.get_query_param("missing", "default") == "default"
+        assert request.query_params.get("name") == "John"
+        assert request.query_params.get("age") == "30"
+        assert request.query_params.get("missing", "default") == "default"
 
-    def test_empty_query_params(self):
+    @pytest.mark.asyncio
+    async def test_empty_query_params(self):
         """Test empty query parameters."""
         scope = self.create_test_scope(query_string=b"")
-        request = Request.from_bytes(scope, b"")
+
+        async def mock_receive():
+            return {"type": "http.request", "body": b"", "more_body": False}
+
+        request = await Request.from_asgi(scope, mock_receive)
 
         assert request.query_params == {}
-        assert request.get_query_param("any", "default") == "default"
+        assert request.query_params.get("any", "default") == "default"
 
-    def test_headers_case_insensitive(self):
+    @pytest.mark.asyncio
+    async def test_headers_case_insensitive(self):
         """Test that headers are case-insensitive."""
         headers = [
             [b"content-type", b"application/json"],
@@ -91,19 +107,28 @@ class TestRequest:
             [b"X-Custom-Header", b"custom-value"],
         ]
         scope = self.create_test_scope(headers=headers)
-        request = Request.from_bytes(scope, b"")
+
+        async def mock_receive():
+            return {"type": "http.request", "body": b"", "more_body": False}
+
+        request = await Request.from_asgi(scope, mock_receive)
 
         # Headers are stored with lowercase keys
         assert request.headers["content-type"] == "application/json"
         assert request.headers["authorization"] == "Bearer token123"
         assert request.headers["x-custom-header"] == "custom-value"
 
-    def test_content_type_detection(self):
+    @pytest.mark.asyncio
+    async def test_content_type_detection(self):
         """Test content type detection."""
         # JSON content type
         headers = [[b"content-type", b"application/json"]]
         scope = self.create_test_scope(headers=headers)
-        request = Request.from_bytes(scope, b"")
+
+        async def mock_receive():
+            return {"type": "http.request", "body": b"", "more_body": False}
+
+        request = await Request.from_asgi(scope, mock_receive)
 
         assert request.content_type == "application/json"
         assert request.is_json() is True
@@ -111,43 +136,66 @@ class TestRequest:
         # HTML content type
         headers = [[b"content-type", b"text/html"]]
         scope = self.create_test_scope(headers=headers)
-        request = Request.from_bytes(scope, b"")
+
+        async def mock_receive2():
+            return {"type": "http.request", "body": b"", "more_body": False}
+
+        request = await Request.from_asgi(scope, mock_receive2)
 
         assert request.content_type == "text/html"
         assert request.is_json() is False
 
         # No content type
         scope = self.create_test_scope()
-        request = Request.from_bytes(scope, b"")
+
+        async def mock_receive3():
+            return {"type": "http.request", "body": b"", "more_body": False}
+
+        request = await Request.from_asgi(scope, mock_receive3)
 
         assert request.content_type is None
         assert request.is_json() is False
 
-    def test_json_parsing_success(self):
+    @pytest.mark.asyncio
+    async def test_json_parsing_success(self):
         """Test successful JSON parsing."""
         headers = [[b"content-type", b"application/json"]]
         scope = self.create_test_scope(headers=headers)
         body = b'{"name": "John", "age": 30, "active": true}'
-        request = Request.from_bytes(scope, body)
+
+        async def mock_receive():
+            return {"type": "http.request", "body": body, "more_body": False}
+
+        request = await Request.from_asgi(scope, mock_receive)
 
         data = request.json()
         assert data == {"name": "John", "age": 30, "active": True}
 
-    def test_json_parsing_invalid(self):
+    @pytest.mark.asyncio
+    async def test_json_parsing_invalid(self):
         """Test JSON parsing with invalid JSON."""
         headers = [[b"content-type", b"application/json"]]
         scope = self.create_test_scope(headers=headers)
         body = b'{"invalid": json}'
-        request = Request.from_bytes(scope, body)
+
+        async def mock_receive():
+            return {"type": "http.request", "body": body, "more_body": False}
+
+        request = await Request.from_asgi(scope, mock_receive)
 
         with pytest.raises(ValueError):
             request.json()
 
-    def test_json_parsing_empty_body(self):
+    @pytest.mark.asyncio
+    async def test_json_parsing_empty_body(self):
         """Test JSON parsing with empty body."""
         headers = [[b"content-type", b"application/json"]]
         scope = self.create_test_scope(headers=headers)
-        request = Request.from_bytes(scope, b"")
+
+        async def mock_receive():
+            return {"type": "http.request", "body": b"", "more_body": False}
+
+        request = await Request.from_asgi(scope, mock_receive)
 
         with pytest.raises(ValueError):
             request.json()

@@ -1,5 +1,6 @@
 from .fastasgi import FastASGI
 from .request import Request
+from .request.upload_file import UploadFile
 from .response import (
     Response,
     text_response,
@@ -14,6 +15,7 @@ __version__ = "0.3.1"
 __all__ = [
     "FastASGI",
     "Request",
+    "UploadFile",
     "Response",
     "HTTPStatus",
     "APIRouter",

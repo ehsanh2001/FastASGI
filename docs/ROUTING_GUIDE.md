@@ -43,6 +43,7 @@ async def get_category(category: str):
 FastASGI supports five parameter types with automatic conversion:
 
 #### 1. String Parameters (`str`)
+
 ```python
 # Default type (no type specifier needed)
 @app.get("/users/{username}")
@@ -56,6 +57,7 @@ async def get_tag(tag: str):
 ```
 
 #### 2. Integer Parameters (`int`)
+
 ```python
 @app.get("/users/{user_id:int}")
 async def get_user_by_id(user_id: int):
@@ -67,6 +69,7 @@ async def get_user_by_id(user_id: int):
 ```
 
 #### 3. Float Parameters (`float`)
+
 ```python
 @app.get("/products/{price:float}")
 async def products_by_price(price: float):
@@ -79,6 +82,7 @@ async def products_by_price(price: float):
 ```
 
 #### 4. UUID Parameters (`uuid`)
+
 ```python
 @app.get("/sessions/{session_id:uuid}")
 async def get_session(session_id: uuid.UUID):
@@ -89,9 +93,10 @@ async def get_session(session_id: uuid.UUID):
 # /sessions/invalid-uuid ❌ no match
 ```
 
-#### 5. Path Parameters (`path`)
+#### 5. Multipath Parameters (`multipath`)
+
 ```python
-@app.get("/files/{filepath:path}")
+@app.get("/files/{filepath:multipath}")
 async def serve_file(filepath: str):
     return {"file": filepath}
 
@@ -124,6 +129,7 @@ async def get_versioned_user(version: str, user_id: int):
 FastASGI offers two ways to access path parameters:
 
 #### 1. Parameter Injection (Recommended)
+
 ```python
 @app.get("/users/{user_id:int}")
 async def get_user(user_id: int):
@@ -132,6 +138,7 @@ async def get_user(user_id: int):
 ```
 
 #### 2. Request Object Access
+
 ```python
 @app.get("/users/{user_id:int}")
 async def get_user(request):
@@ -262,7 +269,7 @@ async def get_user_by_id(user_id: int):
 async def get_user_by_name(username: str):
     return {"username": username}
 
-@app.get("/users/{path:path}", priority=1)
+@app.get("/users/{path:multipath}", priority=1)
 async def users_catchall(path: str):
     return {"path": path}
 
@@ -290,7 +297,7 @@ async def special_action():
 async def user_action(user_id: int):
     return {"user_id": user_id, "action": True}
 
-@app.get("/users/{path:path}")  # Least specific
+@app.get("/users/{path:multipath}")  # Least specific
 async def users_catchall(path: str):
     return {"path": path}
 ```
@@ -309,7 +316,7 @@ Routes are quickly filtered by path segment count before expensive regex matchin
 # Request: /api/users/123/posts  (4 segments)
 # Result: Quickly rejected without regex matching
 
-# Route: /files/{filepath:path}  (2 segments, has path parameter)
+# Route: /files/{filepath:multipath}  (2 segments, has multipath parameter)
 # Request: /files/folder/doc.pdf  (3 segments)
 # Result: Allowed to proceed to regex matching
 ```
@@ -317,6 +324,7 @@ Routes are quickly filtered by path segment count before expensive regex matchin
 ### Route Sorting
 
 Routes are automatically sorted for optimal performance:
+
 1. By priority (higher first)
 2. By specificity (more specific first)
 3. By segment count (fewer segments first for non-path routes)
@@ -366,7 +374,7 @@ async def get_user_post(user_id: int, post_id: uuid.UUID):
     return {"user_id": user_id, "post_id": str(post_id)}
 
 # File serving with path parameters
-@app.get("/static/{filepath:path}")
+@app.get("/static/{filepath:multipath}")
 async def serve_static(filepath: str):
     return {"file": filepath}
 
@@ -384,7 +392,7 @@ app.include_router(v2_router)
 
 # Final route structure:
 # GET /health (priority=15)
-# GET /static/{filepath:path}
+# GET /static/{filepath:multipath}
 # GET /api/v1/admin/dashboard (priority=20)
 # GET /api/v1/admin/{section:str} (priority=15)
 # GET /api/v1/users/me (priority=10)
@@ -410,7 +418,7 @@ async def validate_types(number: int, decimal: float, id: uuid.UUID):
 # GET /validate/42/3.14/550e8400-e29b-41d4-a716-446655440000
 # Returns: {
 #   "number": 42,
-#   "number_type": "int", 
+#   "number_type": "int",
 #   "decimal": 3.14,
 #   "decimal_type": "float",
 #   "id": "550e8400-e29b-41d4-a716-446655440000",
@@ -423,6 +431,7 @@ async def validate_types(number: int, decimal: float, id: uuid.UUID):
 If you're upgrading from basic string-based routing to the advanced system:
 
 ### Before (Basic Routing)
+
 ```python
 @app.get("/users/{user_id}")
 async def get_user(request):
@@ -432,11 +441,12 @@ async def get_user(request):
         user_id = int(user_id)
     except ValueError:
         return {"error": "Invalid user ID"}
-    
+
     return {"user_id": user_id}
 ```
 
 ### After (Advanced Routing)
+
 ```python
 @app.get("/users/{user_id:int}")
 async def get_user(user_id: int):
@@ -450,7 +460,7 @@ async def get_user(user_id: int):
 2. **Set Priorities Explicitly**: For overlapping routes, set explicit priorities
 3. **Organize with Routers**: Use APIRouter for logical grouping
 4. **Specific Before Generic**: Place specific routes before catch-all routes
-5. **Use Path Parameters**: Prefer `{path:path}` over catch-all patterns
+5. **Use Multipath Parameters**: Prefer `{path:multipath}` over catch-all patterns
 6. **Validate Parameters**: Let the framework handle type validation automatically
 
 ## Error Handling

@@ -15,7 +15,56 @@ from ..response import Response
 class Route:
     """
     Represents a single route with path, HTTP method(s), and handler function.
-    Supports dynamic path segments, type conversion, and priority.
+
+    Supports dynamic path segments, type conversion, priority-based matching,
+    and automatic parameter injection into handler functions.
+
+    Attributes:
+        path (str): Normalized URL path pattern. Trailing slashes are removed except
+                   for root ("/"). Examples: "/users", "/users/{id:int}", "/files/{filepath:multipath}"
+
+        handler (Callable): Async function that handles requests matching this route.
+                           Can accept path parameters and optional 'request' parameter.
+
+        methods (Set[str]): Set of HTTP methods this route accepts (e.g., {"GET", "POST"}).
+                           Defaults to {"GET"} if not specified.
+
+        priority (int): Route matching priority. Higher values are checked first.
+                       Useful for ensuring specific routes match before generic ones.
+
+        route_regex (re.Pattern): Compiled regex pattern for matching incoming request paths.
+                                 Generated from the path pattern during initialization.
+
+        param_types (Dict[str, Any]): Maps path parameter names to their expected types.
+                                     Types can be: str, int, float, uuid.UUID, or "multipath".
+                                     Maintains insertion order (Python 3.7+).
+
+        segment_count (int): Number of path segments in the route pattern.
+                           Used for quick filtering before expensive regex matching.
+
+        has_multipath_parameter (bool): True if route contains a multipath parameter ({name:multipath}).
+                                       Multipath parameters can match multiple segments.
+
+        handler_params (list[str]): List of all parameter names in the handler function signature.
+                                   Includes both path parameters and 'request' if present.
+
+        expects_request (bool): True if handler function has a 'request' parameter.
+                               Controls whether Request object is passed to handler.
+
+        handler_path_params (list[str]): List of path parameter names from handler signature.
+                                        Excludes 'request' parameter.
+
+        expected_path_params (list[str]): List of path parameters that exist in both
+                                         the route pattern and handler signature.
+                                         Used for automatic parameter injection.
+
+    Example:
+        >>> async def get_user(user_id: int, request: Request) -> Response:
+        ...     return Response(f"User {user_id}")
+        >>>
+        >>> route = Route("/users/{user_id:int}", get_user, {"GET"}, priority=10)
+        >>> matches, params = route.matches("/users/123", "GET")
+        >>> # matches=True, params={"user_id": 123}
     """
 
     def __init__(
@@ -23,35 +72,42 @@ class Route:
         path: str,
         handler: Callable[..., Awaitable[Response]],
         methods: Optional[Set[str]] = None,
-        name: Optional[str] = None,
         priority: int = 0,
     ):
         """
         Initialize a Route.
 
         Args:
-            path: URL path pattern (e.g., "/users", "/users/{user_id:int}", "/files/{filepath:path}")
+            path: URL path pattern (e.g., "/users", "/users/{user_id:int}", "/files/{filepath:multipath}")
             handler: Async function that handles the request
             methods: Set of HTTP methods this route accepts (default: {"GET"})
-            name: Optional name for the route (for URL generation)
             priority: Route priority for matching order (higher = checked first, default: 0)
         """
         self.path = path.rstrip("/") or "/"  # Normalize path
         self.handler = handler
         self.methods = methods or {"GET"}
-        self.name = name
         self.priority = priority
+
+        # Note: route_regex will be set during initialization, so it's never actually None at runtime
+        self.route_regex: re.Pattern = None  # type: ignore
+        self.param_types: Dict[str, Any] = {}
+        self.segment_count: int = 0
+        self.has_multipath_parameter: bool = False
+        self.handler_params: list[str] = []
+        self.expects_request: bool = False
+        self.handler_path_params: list[str] = []
+        self.expected_path_params: list[str] = []
 
         if invalid_methods := self._invalid_http_methods():
             raise ValueError(f"Invalid HTTP methods: {invalid_methods}")
 
         # Parse path pattern and compile regex
-        self.path_regex, self.param_types = self._compile_path_pattern()
+        self.route_regex, self.param_types = self._compile_route_pattern()
 
         # Precompute segment count for optimization
         self.segment_count = self._count_path_segments(self.path)
-        self.has_path_parameter = any(
-            param_type == "path" for param_type in self.param_types.values()
+        self.has_multipath_parameter = any(
+            param_type == "multipath" for param_type in self.param_types.values()
         )
 
         # Inspect handler function signature for automatic parameter injection
@@ -146,14 +202,14 @@ class Route:
                         f"Parameter '{param_name}' type mismatch: "
                         f"route expects UUID but handler annotated as {annotation}"
                     )
-                elif route_param_type == "path" and annotation not in (
+                elif route_param_type == "multipath" and annotation not in (
                     str,
                     type(None),
                     inspect.Parameter.empty,
                 ):
                     raise ValueError(
                         f"Parameter '{param_name}' type mismatch: "
-                        f"route path parameter should be str but handler annotated as {annotation}"
+                        f"route multipath parameter should be str but handler annotated as {annotation}"
                     )
                 elif route_param_type == str and annotation not in (
                     str,
@@ -165,14 +221,14 @@ class Route:
                         f"route expects str but handler annotated as {annotation}"
                     )
 
-    def _compile_path_pattern(self) -> tuple[re.Pattern, dict[str, Any]]:
+    def _compile_route_pattern(self) -> tuple[re.Pattern, dict[str, Any]]:
         """
-        Compile path pattern into regex and extract parameter information.
+        Compile route pattern into regex and extract parameter information.
 
         Supports:
         - Static paths: /users
         - Dynamic segments: /users/{user_id}, /users/{user_id:int}
-        - Path parameters: /files/{filepath:path} (captures remaining path)
+        - Multipath parameters: /files/{filepath:multipath} (captures remaining path)
 
         Returns:
             Tuple of (compiled regex, parameter types with preserved order)
@@ -180,7 +236,7 @@ class Route:
         # Validate that wildcard characters are not used
         if "*" in self.path:
             raise ValueError(
-                "Wildcard patterns (*/**) are no longer supported. Use path parameters instead: {name:path}"
+                "Wildcard patterns (*/**) are no longer supported. Use multipath parameters instead: {name:multipath}"
             )
 
         param_types = {}  # Using dict to maintain insertion order (Python 3.7+)
@@ -188,49 +244,45 @@ class Route:
 
         i = 0
         while i < len(self.path):
-            i = self._process_pattern_segment(self.path, i, regex_parts, param_types)
+            i = self._process_path_segment(self.path, i, regex_parts, param_types)
 
-        regex_pattern = self._build_final_regex_pattern(regex_parts)
+        regex_pattern = "^" + "".join(regex_parts) + "$"
         return re.compile(regex_pattern), param_types
 
     def _count_path_segments(self, path: str) -> int:
         """Count the number of path segments by counting '/' characters."""
-        if path == "/" or path == "":
+        # Remove leading slash and split by '/'
+        clean_path = path.lstrip("/")
+        if not clean_path:
             return 1
 
-        # For paths ending with '/', count the empty segment after the slash
-        if path.endswith("/"):
-            # Remove leading slash and split by '/'
-            clean_path = path.lstrip("/")
-            if not clean_path:
-                return 1
-            return clean_path.count("/") + 1
-        else:
-            # Remove leading and trailing slashes, then split by '/'
-            clean_path = path.strip("/")
-            if not clean_path:
-                return 1
-            return clean_path.count("/") + 1
+        return clean_path.count("/") + 1
 
-    def _process_pattern_segment(
+    def _process_path_segment(
         self,
-        pattern: str,
+        path_segment: str,
         index: int,
         regex_parts: list[str],
         param_types: dict[str, Any],
     ) -> int:
         """
-        Process a single segment of the path pattern and update regex parts.
+        Process a single segment of the path pattern and update regex.
+
+        Args:
+            path_segment: The full path pattern string
+            index: Current index in the path pattern
+            regex_parts: List to collect regex parts
+            param_types: Dictionary to collect parameter types
 
         Returns:
             The new index position after processing this segment
         """
-        if pattern[index] == "{":
+        if path_segment[index] == "{":
             return self._process_path_parameter(
-                pattern, index, regex_parts, param_types
+                path_segment, index, regex_parts, param_types
             )
         else:
-            return self._process_literal_character(pattern, index, regex_parts)
+            return self._process_literal_segment(path_segment, index, regex_parts)
 
     def _process_path_parameter(
         self,
@@ -239,7 +291,34 @@ class Route:
         regex_parts: list[str],
         param_types: dict[str, Any],
     ) -> int:
-        """Process path parameter {name} or {name:type} and return new index."""
+        """
+        Parses parameter specifications like {user_id} or {user_id:int} from
+        the path pattern and builds corresponding regex patterns.
+
+        Args:
+            pattern: The full path pattern string being processed
+            index: Current index position in the pattern
+            regex_parts: List to collect regex parts (modified in-place).
+                         The appropriate regex pattern for this parameter
+                         will be appended to this list.
+            param_types: Dictionary to collect parameter type information
+                         (modified in-place). Maps parameter names to their
+                         expected types (int, str, uuid.UUID, or "path").
+
+        Returns:
+            The new index position after processing this parameter (after '}')
+
+        Raises:
+            ValueError: If parameter specification is malformed (unclosed braces,
+                       invalid type specifications, etc.)
+
+        Example:
+            For pattern "/users/{user_id:int}/posts", when index points to '{':
+            - Extracts "user_id:int"
+            - Adds r"(\\d+)" to regex_parts
+            - Adds {"user_id": int} to param_types
+            - Returns index pointing after '}'
+        """
         end = pattern.find("}", index)
         if end == -1:
             raise ValueError(f"Unclosed parameter at position {index}")
@@ -254,23 +333,55 @@ class Route:
 
         return end + 1
 
-    def _process_literal_character(
+    def _process_literal_segment(
         self, pattern: str, index: int, regex_parts: list[str]
     ) -> int:
-        """Process literal character and escape if needed for regex."""
-        char = pattern[index]
-        if char in r".^$+?{}[]|()":
-            regex_parts.append("\\" + char)
+        """
+        Process a complete literal segment until next '{' or end of pattern.
+
+        Args:
+            pattern: The full path pattern string
+            index: Current index position in the pattern
+            regex_parts: List to collect regex parts (modified in-place).
+                         The escaped literal segment will be appended.
+
+        Returns:
+            The new index position after processing this literal segment
+
+        Example:
+            For pattern "/users/profile/{id}", starting at index 1:
+            - Processes "users/profile/" as one unit
+            - Escapes special regex characters as needed
+            - Returns index pointing to '{'
+        """
+        start = index
+
+        # Find the next '{' or end of string
+        next_param_index = pattern.find("{", index)
+        if next_param_index == -1:
+            end_index = len(pattern)
         else:
-            regex_parts.append(char)
-        return index + 1
+            end_index = next_param_index
+
+        # Extract the literal segment
+        literal_segment = pattern[start:end_index]
+
+        # Escape special regex characters in the entire segment and append
+        escaped_segment = re.escape(literal_segment)
+        regex_parts.append(escaped_segment)
+
+        return end_index
 
     def _parse_parameter_specification(self, param_spec: str) -> tuple[str, Any]:
         """
         Parse parameter specification like 'user_id' or 'user_id:int'.
 
+        Args:
+            param_spec: Parameter specification string (e.g., 'user_id', 'user_id:int', 'filepath:multipath')
+
         Returns:
             Tuple of (parameter_name, parameter_type)
+            If no type specified, defaults to str
         """
         if ":" in param_spec:
             param_name, type_name = param_spec.split(":", 1)
@@ -289,15 +400,11 @@ class Route:
             return r"(\d+(?:\.\d+)?)"
         elif param_type == uuid.UUID:
             return r"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})"
-        elif param_type == "path":
-            # Special case for 'path' type - matches any remaining path (like catch-all but captured)
+        elif param_type == "multipath":
+            # Special case for 'multipath' type - matches any remaining path (like catch-all but captured)
             return r"(.*)"
         else:  # str or any other type
             return r"([^/]+)"
-
-    def _build_final_regex_pattern(self, regex_parts: list[str]) -> str:
-        """Build the final anchored regex pattern from all parts."""
-        return "^" + "".join(regex_parts) + "$"
 
     def _get_param_type(self, type_name: str) -> type:
         """Get Python type from string type name."""
@@ -306,7 +413,7 @@ class Route:
             "int": int,
             "float": float,
             "uuid": uuid.UUID,
-            "path": "path",  # Special marker for path type
+            "multipath": "multipath",  # Special marker for multipath type
         }
 
         if type_name not in type_map:
@@ -345,27 +452,30 @@ class Route:
         # Route can match if:
         # 1. Original segment counts are equal (handles exact matches)
         # 2. Normalized segment counts are equal (handles trailing slash normalization)
-        # 3. Request has more segments AND route has a path parameter (handles path params)
+        # 3. Request has more segments AND route has a multipath parameter (handles multipath params)
         segment_match = (
             request_segment_count == self.segment_count
             or normalized_request_segments == self.segment_count
-            or (request_segment_count > self.segment_count and self.has_path_parameter)
+            or (
+                request_segment_count > self.segment_count
+                and self.has_multipath_parameter
+            )
         )
 
         if not segment_match:
             return False, {}
 
-        # For routes with path parameters, try matching original path first
-        # This handles cases like /files/ matching /files/{path:path} with empty path
-        if self.has_path_parameter:
-            match = self.path_regex.match(path)
+        # For routes with multipath parameters, try matching original path first
+        # This handles cases like /files/ matching /files/{path:multipath} with empty path
+        if self.has_multipath_parameter:
+            match = self.route_regex.match(path)
             if match:
                 # Extract and convert path parameters
                 return self._extract_path_parameters(match)
 
         # Normalize the request path and try matching
         normalized_path = path.rstrip("/") or "/"
-        match = self.path_regex.match(normalized_path)
+        match = self.route_regex.match(normalized_path)
         if not match:
             return False, {}
 
@@ -386,8 +496,8 @@ class Route:
                     path_params[param_name] = float(raw_value)
                 elif param_type == uuid.UUID:
                     path_params[param_name] = uuid.UUID(raw_value)
-                elif param_type == "path":
-                    # Path type stores the raw string value (like str but matches any path)
+                elif param_type == "multipath":
+                    # Multipath type stores the raw string value (like str but matches any path)
                     path_params[param_name] = raw_value
                 else:  # str or other
                     path_params[param_name] = raw_value

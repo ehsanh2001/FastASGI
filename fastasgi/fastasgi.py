@@ -12,20 +12,31 @@ from .middleware import MiddlewareChain, MiddlewareCallable
 
 
 class FastASGI:
-    """FastASGI application class with routing support."""
+    """Main FastASGI application class. To create an application, instantiate this class."""
 
-    def __init__(self, router: Optional[APIRouter] = None):
+    def __init__(
+        self,
+        api_router: Optional[APIRouter] = None,
+        max_in_memory_file_size: int = 1024 * 1024,  # 1 MB default
+        temp_dir: Optional[str] = None,
+    ):
         """Initialize the FastASGI application.
 
         Args:
-            router: Optional router instance. If not provided, a new APIRouter is created.
+            api_router: Optional router instance. If not provided, a new APIRouter is created.
+            max_in_memory_file_size: Maximum size in bytes to keep files in memory before using disk
+            temp_dir: Directory for temporary files (None for system default)
         """
-        self.router = router or APIRouter()
+        self.api_router = api_router or APIRouter()
         self.middleware_chain = MiddlewareChain()
         self._app_with_middleware: Callable[[Request], Awaitable[Response]] | None = (
             None
         )
         self._middleware_built = False
+
+        # Configure Request class with application-level settings
+        Request.max_in_memory_file_size = max_in_memory_file_size
+        Request.temp_dir = temp_dir
 
         # Lifespan event handlers
         self._startup_handlers: List[Callable[[], Awaitable[None]]] = []
@@ -34,13 +45,20 @@ class FastASGI:
         # First startup handler builds middleware chain
         self._startup_handlers.append(self._build_middleware_chain)
 
+        # Add cleanup handler for shutdown
+        self._shutdown_handlers.append(self._cleanup_all_requests)
+
     async def _build_middleware_chain(self):
         """Build the middleware chain during application startup."""
         if not self._middleware_built:
             self._app_with_middleware = self.middleware_chain.build(
-                self.router.handle_request
+                self.api_router.handle_request
             )
             self._middleware_built = True
+
+    async def _cleanup_all_requests(self):
+        """Clean up all active requests during application shutdown."""
+        Request.cleanup_all_active_requests()
 
     def include_router(
         self,
@@ -54,7 +72,7 @@ class FastASGI:
             router: APIRouter to include
             prefix: URL prefix for the included router
         """
-        self.router.include_router(router, prefix)
+        self.api_router.include_router(router, prefix)
 
     def add_middleware(self, middleware: MiddlewareCallable):
         """
@@ -65,8 +83,6 @@ class FastASGI:
         Raises:
             RuntimeError: If middleware is added after application startup
         """
-        # Add metadata to mark as FastASGI middleware
-        setattr(middleware, "_is_fastasgi_middleware", True)
 
         self.middleware_chain.add(middleware)
         # Middleware chain will be built during startup
@@ -89,8 +105,6 @@ class FastASGI:
         """
 
         def decorator(func: MiddlewareCallable) -> MiddlewareCallable:
-            # Add metadata to mark as FastASGI middleware
-            setattr(func, "_is_fastasgi_middleware", True)
             self.add_middleware(func)
             return func
 
@@ -175,12 +189,11 @@ class FastASGI:
         for handler in self._shutdown_handlers:
             await handler()
 
-    # Route decorator methods (like FastAPI)
+    # Route decorator methods
     def route(
         self,
         path: str,
         methods: Optional[Set[str]] = None,
-        name: Optional[str] = None,
         priority: int = 0,
     ):
         """
@@ -189,45 +202,45 @@ class FastASGI:
         Args:
             path: URL path pattern (supports {param}, {param:type}, *, **)
             methods: Set of HTTP methods this route accepts
-            name: Optional name for the route
             priority: Route priority for matching order (higher = checked first)
 
         Returns:
             Decorator function
         """
-        return self.router.route(path, methods, name, priority)
+        return self.api_router.route(path, methods, priority)
 
-    def get(self, path: str, name: Optional[str] = None, priority: int = 0):
+    def get(self, path: str, priority: int = 0):
         """Decorator for GET routes."""
-        return self.router.get(path, name, priority)
+        return self.api_router.get(path, priority)
 
-    def post(self, path: str, name: Optional[str] = None, priority: int = 0):
+    def post(self, path: str, priority: int = 0):
         """Decorator for POST routes."""
-        return self.router.post(path, name, priority)
+        return self.api_router.post(path, priority)
 
-    def put(self, path: str, name: Optional[str] = None, priority: int = 0):
+    def put(self, path: str, priority: int = 0):
         """Decorator for PUT routes."""
-        return self.router.put(path, name, priority)
+        return self.api_router.put(path, priority)
 
-    def delete(self, path: str, name: Optional[str] = None, priority: int = 0):
+    def delete(self, path: str, priority: int = 0):
         """Decorator for DELETE routes."""
-        return self.router.delete(path, name, priority)
+        return self.api_router.delete(path, priority)
 
-    def patch(self, path: str, name: Optional[str] = None, priority: int = 0):
+    def patch(self, path: str, priority: int = 0):
         """Decorator for PATCH routes."""
-        return self.router.patch(path, name, priority)
+        return self.api_router.patch(path, priority)
 
-    def head(self, path: str, name: Optional[str] = None, priority: int = 0):
+    def head(self, path: str, priority: int = 0):
         """Decorator for HEAD routes."""
-        return self.router.head(path, name, priority)
+        return self.api_router.head(path, priority)
 
-    def options(self, path: str, name: Optional[str] = None, priority: int = 0):
+    def options(self, path: str, priority: int = 0):
         """Decorator for OPTIONS routes."""
-        return self.router.options(path, name, priority)
+        return self.api_router.options(path, priority)
 
     async def __call__(self, scope: Dict[str, Any], receive: Callable, send: Callable):
         """
         ASGI application entrypoint.
+        This method is called by the ASGI server (uvicorn for example) for each incoming connection.
 
         Args:
             scope: Connection scope information
@@ -281,9 +294,10 @@ class FastASGI:
         """
         Handle HTTP requests using the middleware stack and routing system.
         """
+        request = None
         try:
-            # Build Request which loads body from the ASGI receive channel
-            request = await Request.from_receive(scope, receive)
+            # Build Request object and load body from the ASGI receive channel
+            request = await Request.from_asgi(scope, receive)
 
             # Process request through pre-built middleware stack
             if self._app_with_middleware is None:
@@ -301,8 +315,10 @@ class FastASGI:
             )
             asgi_response = error_response.to_asgi_response()
             await self._send_response(send, asgi_response)
-
-    # Request body reception is handled within Request.from_asgi
+        finally:
+            # Clean up request resources after response is sent
+            if request is not None:
+                request.cleanup_files()
 
     async def _send_response(self, send: Callable, asgi_response: Dict[str, Any]):
         """

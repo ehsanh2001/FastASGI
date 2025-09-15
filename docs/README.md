@@ -11,7 +11,7 @@ A lightweight, educational ASGI framework built from scratch with FastAPI-style 
 - 🔧 **Middleware System**: Request/response pipeline with authentication, logging, CORS, and custom middleware
 - ⚡ **High Performance**: Optimized route matching with segment-count pre-filtering
 - 🍪 **Full Cookie Support**: Set, read, delete cookies with all standard attributes
-- 📡 **ASGI 3.0 Compatible**: Works with uvicorn, hypercorn, and other ASGI servers  
+- 📡 **ASGI 3.0 Compatible**: Works with uvicorn, hypercorn, and other ASGI servers
 - 🔄 **Request/Response Objects**: High-level abstractions similar to FastAPI
 - 📋 **Content Type Detection**: Automatic JSON, HTML, and text content type handling
 - 🔍 **Multi-Value Query Params**: Handle parameters with multiple values (tags, filters, etc.)
@@ -41,8 +41,8 @@ async def health_check(request):
 
 @app.post("/echo")
 async def echo(request):
-    # Access request body as property (not async method)
-    body = request.body
+    # Access request body as method
+    body = request.body()
     data = json.loads(body.decode()) if body else {}
     return json_response({"echo": data})
 
@@ -71,7 +71,7 @@ async def list_users(request):
 
 @users_router.post("/")
 async def create_user(request):
-    body = request.body
+    body = request.body()
     data = json.loads(body.decode()) if body else {}
     return json_response({
         "created_user": {"id": 999, "name": data.get("name", "Unknown")}
@@ -87,7 +87,7 @@ app.include_router(users_router, prefix="/api/users")
 
 # Available routes:
 # GET  /api/users/         - List users
-# POST /api/users/         - Create user  
+# POST /api/users/         - Create user
 # GET  /api/users/{id}     - Get specific user
 ```
 
@@ -125,8 +125,8 @@ async def products_by_price(price: float):
 async def get_session(session_id: uuid.UUID):
     return json_response({"session": str(session_id)})
 
-# Path parameters (captures remaining path segments)
-@app.get("/files/{filepath:path}")
+# Multipath parameters (captures remaining path segments)
+@app.get("/files/{filepath:multipath}")
 async def serve_file(filepath: str):
     return json_response({"file": filepath})
 
@@ -137,14 +137,16 @@ async def get_user_post(user_id: int, post_id: int):
 ```
 
 **Supported Parameter Types:**
+
 - `{name}` or `{name:str}` - String (default)
 - `{name:int}` - Integer (only matches numeric values)
 - `{name:float}` - Float (matches decimal numbers)
 - `{name:uuid}` - UUID (matches valid UUID format)
-- `{name:path}` - Path (captures all remaining path segments)
+- `{name:multipath}` - Multipath (captures all remaining path segments)
 
-**Path Parameter Matching:**
-- `/files/{filepath:path}` matches `/files/doc.pdf` and `/files/folder/doc.pdf`
+**Multipath Parameter Matching:**
+
+- `/files/{filepath:multipath}` matches `/files/doc.pdf` and `/files/folder/doc.pdf`
 - The `filepath` parameter contains `doc.pdf` or `folder/doc.pdf` respectively
 - Can capture empty paths: `/files/` results in `filepath = ""`
 
@@ -182,7 +184,7 @@ app.include_router(users_router, prefix="/api/users")  # Routes: /api/users/*
 
 # Final route structure:
 # GET /api/v1/health
-# GET /v2/admin/dashboard  
+# GET /v2/admin/dashboard
 # GET /api/users/{user_id:int}
 ```
 
@@ -200,11 +202,11 @@ async def current_user():
 async def get_user_by_id(user_id: int):
     return json_response({"user_id": user_id})
 
-@app.get("/users/{path:path}", priority=1)
+@app.get("/users/{path:multipath}", priority=1)
 async def users_catchall(path: str):
     return json_response({"path": path})
 
-# Matching order: /users/me → /users/{user_id:int} → /users/{path:path}
+# Matching order: /users/me → /users/{user_id:int} → /users/{path:multipath}
 ```
 
 ### Nested Router Example
@@ -297,7 +299,7 @@ async def request_tracking_middleware(request, call_next):
     # Add unique request ID
     request_id = f"req_{int(time.time() * 1000)}"
     request.state.request_id = request_id
-    
+
     response = await call_next(request)
     response.headers['X-Request-ID'] = request_id
     return response
@@ -307,14 +309,14 @@ async def api_key_middleware(request, call_next):
     # Skip auth for public endpoints
     if request.path.startswith('/public'):
         return await call_next(request)
-    
+
     api_key = request.headers.get('X-API-Key')
     if not api_key or api_key != 'secret-key-123':
         return json_response(
-            {"error": "Invalid or missing API key"}, 
+            {"error": "Invalid or missing API key"},
             status_code=401
         )
-    
+
     return await call_next(request)
 
 # CORS middleware
@@ -327,7 +329,7 @@ async def cors_middleware(request, call_next):
 
 # Register all middleware
 app.add_middleware(request_tracking_middleware)
-app.add_middleware(api_key_middleware)  
+app.add_middleware(api_key_middleware)
 app.add_middleware(cors_middleware)
 ```
 
@@ -358,12 +360,12 @@ async def error_handling_middleware(request, call_next):
         return response
     except ValueError as e:
         return json_response(
-            {"error": "Invalid input", "detail": str(e)}, 
+            {"error": "Invalid input", "detail": str(e)},
             status_code=400
         )
     except Exception as e:
         return json_response(
-            {"error": "Internal server error"}, 
+            {"error": "Internal server error"},
             status_code=500
         )
 ```
@@ -389,6 +391,7 @@ async def get_profile(request):
 ### Complete Middleware Example
 
 See `examples/middleware_example.py` for a comprehensive real-world example with:
+
 - Request tracking and unique IDs
 - Performance monitoring with timing
 - API key authentication
@@ -396,6 +399,7 @@ See `examples/middleware_example.py` for a comprehensive real-world example with
 - CORS headers for browser compatibility
 
 Run the example:
+
 ```bash
 cd examples
 uvicorn middleware_example:app --host 0.0.0.0 --port 8001 --reload
@@ -411,19 +415,19 @@ async def handle_request(request):
     # HTTP method and path
     method = request.method          # "POST"
     path = request.path             # "/example"
-    
+
     # Headers (case-insensitive)
     content_type = request.headers.get("content-type")
     user_agent = request.headers.get("User-Agent")
-    
-    # Request body (property, not async method)
-    body = request.body             # bytes
-    text = body.decode()            # str
-    
+
+    # Request body (method call)
+    body = request.body()           # bytes
+    text = request.text()           # str
+
     # JSON parsing
     if body:
         data = json.loads(body.decode())
-    
+
     return json_response({"received": "ok"})
 ```
 
@@ -442,7 +446,7 @@ async def get_user_post(user_id: int, post_id: int):
         }
     })
 
-# Alternative: Mix of parameter injection and request access  
+# Alternative: Mix of parameter injection and request access
 @app.get("/legacy/{item_id:int}")
 async def legacy_route(request, item_id: int):
     # Can access via both methods, but parameter injection is preferred
@@ -457,16 +461,16 @@ async def legacy_route(request, item_id: int):
 @app.get("/search")
 async def search(request):
     # Single value query parameters
-    query = request.get_query_param("q", "")
-    limit = request.get_query_param("limit", "10")
-    
+    query = request.query_params.get("q", "")
+    limit = request.query_params.get("limit", "10")
+
     # Multi-value query parameters
-    tags = request.get_query_params("tags")  # List of all "tags" values
-    
+    tags = request.query_params_multi.get("tags", [])  # List of all "tags" values
+
     # All query parameters
     all_params = dict(request.query_params)        # Single values only
     all_multi = request.query_params_multi         # All values as lists
-    
+
     return json_response({
         "query": query,
         "tags": tags,
@@ -475,7 +479,7 @@ async def search(request):
 
 # Example: /search?q=python&tags=web&tags=api&limit=20
 # query = "python"
-# tags = ["web", "api"]  
+# tags = ["web", "api"]
 # limit = "20"
 ```
 
@@ -485,13 +489,13 @@ async def search(request):
 @app.get("/profile")
 async def get_profile(request):
     # Read cookies
-    user_id = request.get_cookie("user_id")
-    theme = request.get_cookie("theme", "light")  # with default
+    user_id = request.cookies.get("user_id")
+    theme = request.cookies.get("theme", "light")  # with default
     all_cookies = request.cookies  # Dict[str, str]
-    
+
     if not user_id:
         return json_response({"error": "Not logged in"}, status_code=401)
-    
+
     return json_response({"user_id": user_id, "theme": theme})
 ```
 
@@ -507,19 +511,19 @@ async def response_examples(request):
     # Text response
     if request.path == "/text":
         return text_response("Plain text content")
-    
-    # HTML response  
+
+    # HTML response
     elif request.path == "/html":
         return html_response("<h1>HTML Content</h1>")
-    
+
     # JSON response
     elif request.path == "/json":
         return json_response({"message": "JSON data", "status": "ok"})
-    
+
     # Redirect response
     elif request.path == "/redirect":
         return redirect_response("/")
-    
+
     # Custom response
     else:
         return Response(
@@ -534,9 +538,9 @@ async def response_examples(request):
 ```python
 @app.post("/login")
 async def login(request):
-    body = request.body
+    body = request.body()
     data = json.loads(body.decode()) if body else {}
-    
+
     # Validate credentials (simplified)
     if data.get("username") == "admin":
         # Set cookies with method chaining
@@ -548,7 +552,7 @@ async def login(request):
     else:
         return json_response({"error": "Invalid credentials"}, status_code=401)
 
-@app.post("/logout")  
+@app.post("/logout")
 async def logout(request):
     # Clear cookies
     response = (json_response({"status": "logged out"})
@@ -567,7 +571,7 @@ response.set_cookie(
     max_age=86400,              # 24 hours in seconds
     expires=datetime(2025, 12, 31),  # Explicit expiration date
     path="/admin",              # Cookie path
-    domain="example.com",       # Cookie domain  
+    domain="example.com",       # Cookie domain
     secure=True,                # HTTPS only
     httponly=True,              # Not accessible via JavaScript
     samesite="Strict"           # CSRF protection
@@ -587,7 +591,7 @@ async def get_resource(request):
 async def create_resource(request):
     return json_response({"method": "POST"})
 
-@app.put("/resource")  
+@app.put("/resource")
 async def update_resource(request):
     return json_response({"method": "PUT"})
 
@@ -618,15 +622,15 @@ FastASGI automatically handles common HTTP errors:
 # Automatic 404 for unmatched routes
 # GET /nonexistent -> 404 Not Found
 
-# Automatic 405 for wrong methods  
+# Automatic 405 for wrong methods
 # POST /api/users (when only GET is defined) -> 405 Method Not Allowed
 # Includes proper "Allow" header with supported methods
 
 # Manual error responses
 @app.get("/error-example")
 async def error_example(request):
-    error_type = request.get_query_param("type", "400")
-    
+    error_type = request.query_params.get("type", "400")
+
     if error_type == "400":
         return json_response({"error": "Bad Request"}, status_code=400)
     elif error_type == "500":
@@ -670,7 +674,7 @@ uvicorn your_app:app --host 0.0.0.0 --port 8000 --workers 4
 pip install hypercorn
 hypercorn your_app:app --bind 0.0.0.0:8000
 
-# With Daphne  
+# With Daphne
 pip install daphne
 daphne -b 0.0.0.0 -p 8000 your_app:app
 ```
@@ -759,6 +763,7 @@ async def setup_monitoring():
 ### Use Cases
 
 Lifespan events are perfect for:
+
 - Database connection setup and cleanup
 - Loading ML models or configuration
 - Setting up monitoring and logging
@@ -768,6 +773,7 @@ Lifespan events are perfect for:
 ## Examples and Documentation
 
 ### Code Examples
+
 See the `examples/` directory for complete examples:
 
 - `routing_example.py` - Basic routing demonstration
@@ -775,6 +781,7 @@ See the `examples/` directory for complete examples:
 - `middleware_example.py` - Comprehensive middleware system with real-world patterns
 
 ### Complete Documentation
+
 - `ROUTING_GUIDE.md` - Comprehensive guide to FastASGI's advanced routing system
 - `MIDDLEWARE_GUIDE.md` - In-depth middleware architecture and implementation guide
 - `ROADMAP.md` - Future development plans
@@ -820,7 +827,7 @@ from fastasgi import HTTPStatus
 # Common status codes
 HTTPStatus.HTTP_200_OK                    # 200
 HTTPStatus.HTTP_201_CREATED              # 201
-HTTPStatus.HTTP_400_BAD_REQUEST          # 400  
+HTTPStatus.HTTP_400_BAD_REQUEST          # 400
 HTTPStatus.HTTP_401_UNAUTHORIZED         # 401
 HTTPStatus.HTTP_404_NOT_FOUND           # 404
 HTTPStatus.HTTP_405_METHOD_NOT_ALLOWED  # 405
@@ -828,7 +835,7 @@ HTTPStatus.HTTP_500_INTERNAL_SERVER_ERROR # 500
 
 # Use in responses
 return json_response(
-    {"error": "Not found"}, 
+    {"error": "Not found"},
     status_code=HTTPStatus.HTTP_404_NOT_FOUND
 )
 ```
@@ -874,11 +881,6 @@ MIT License - see LICENSE file for details.
 
 FastASGI has no external dependencies - it's built using only Python standard library.
 
-
-
-
-
-
 ## Testing FastASGI Applications
 
 When writing tests for FastASGI applications, especially those using middleware, you may need to manually build the middleware chain since tests don't go through the normal ASGI startup process.
@@ -892,38 +894,38 @@ from fastasgi import FastASGI, text_response
 @pytest.mark.asyncio
 async def test_app_with_middleware():
     app = FastASGI()
-    
+
     @app.middleware()
     async def add_header(request, call_next):
         response = await call_next(request)
         response.headers["X-Test"] = "middleware-applied"
         return response
-    
+
     @app.get("/")
     async def home(request):
         return text_response("Hello World")
-    
+
     # IMPORTANT: Build middleware chain before testing
     await app._build_middleware_chain()
-    
+
     # Now test your application
     scope = {
         "type": "http",
-        "method": "GET", 
+        "method": "GET",
         "path": "/",
         "headers": [],
         "query_string": b"",
     }
-    
+
     async def receive():
         return {"type": "http.request", "body": b"", "more_body": False}
-    
+
     sent_messages = []
     async def send(message):
         sent_messages.append(message)
-    
+
     await app(scope, receive, send)
-    
+
     # Verify middleware was applied
     response_start = next(msg for msg in sent_messages if msg["type"] == "http.response.start")
     headers = dict(response_start["headers"])

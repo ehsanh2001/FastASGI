@@ -23,54 +23,79 @@ class TestRequestCookies:
             "headers": headers,
         }
 
-    def test_no_cookies(self):
+    @pytest.mark.asyncio
+    async def test_no_cookies(self):
         """Test request with no cookies."""
         scope = self.create_test_scope()
-        request = Request.from_bytes(scope, b"")
+
+        async def mock_receive():
+            return {"type": "http.request", "body": b"", "more_body": False}
+
+        request = await Request.from_asgi(scope, mock_receive)
 
         assert request.cookies == {}
-        assert request.get_cookie("any", "default") == "default"
+        assert request.cookies.get("any", "default") == "default"
 
-    def test_single_cookie(self):
+    @pytest.mark.asyncio
+    async def test_single_cookie(self):
         """Test request with a single cookie."""
         headers = [[b"cookie", b"session=abc123"]]
         scope = self.create_test_scope(headers=headers)
-        request = Request.from_bytes(scope, b"")
+
+        async def mock_receive():
+            return {"type": "http.request", "body": b"", "more_body": False}
+
+        request = await Request.from_asgi(scope, mock_receive)
 
         assert request.cookies == {"session": "abc123"}
-        assert request.get_cookie("session") == "abc123"
-        assert request.get_cookie("missing", "default") == "default"
+        assert request.cookies.get("session") == "abc123"
+        assert request.cookies.get("missing", "default") == "default"
 
-    def test_multiple_cookies(self):
+    @pytest.mark.asyncio
+    async def test_multiple_cookies(self):
         """Test request with multiple cookies."""
         headers = [[b"cookie", b"session=abc123; user_id=456; theme=dark"]]
         scope = self.create_test_scope(headers=headers)
-        request = Request.from_bytes(scope, b"")
+
+        async def mock_receive():
+            return {"type": "http.request", "body": b"", "more_body": False}
+
+        request = await Request.from_asgi(scope, mock_receive)
 
         expected_cookies = {"session": "abc123", "user_id": "456", "theme": "dark"}
         assert request.cookies == expected_cookies
-        assert request.get_cookie("session") == "abc123"
-        assert request.get_cookie("user_id") == "456"
-        assert request.get_cookie("theme") == "dark"
+        assert request.cookies.get("session") == "abc123"
+        assert request.cookies.get("user_id") == "456"
+        assert request.cookies.get("theme") == "dark"
 
-    def test_cookies_with_spaces(self):
+    @pytest.mark.asyncio
+    async def test_cookies_with_spaces(self):
         """Test cookies with spaces around values."""
         headers = [[b"cookie", b"name1=value1;  name2=value2  ; name3 = value3"]]
         scope = self.create_test_scope(headers=headers)
-        request = Request.from_bytes(scope, b"")
+
+        async def mock_receive():
+            return {"type": "http.request", "body": b"", "more_body": False}
+
+        request = await Request.from_asgi(scope, mock_receive)
 
         expected_cookies = {"name1": "value1", "name2": "value2", "name3": "value3"}
         assert request.cookies == expected_cookies
 
-    def test_duplicate_cookie_names(self):
+    @pytest.mark.asyncio
+    async def test_duplicate_cookie_names(self):
         """Test handling of duplicate cookie names (last wins)."""
         headers = [[b"cookie", b"name=first; name=second; name=third"]]
         scope = self.create_test_scope(headers=headers)
-        request = Request.from_bytes(scope, b"")
+
+        async def mock_receive():
+            return {"type": "http.request", "body": b"", "more_body": False}
+
+        request = await Request.from_asgi(scope, mock_receive)
 
         # Last value should win
         assert request.cookies == {"name": "third"}
-        assert request.get_cookie("name") == "third"
+        assert request.cookies.get("name") == "third"
 
 
 class TestRequestMultiValueQueryParams:
@@ -86,73 +111,101 @@ class TestRequestMultiValueQueryParams:
             "headers": [],
         }
 
-    def test_no_query_params(self):
+    @pytest.mark.asyncio
+    async def test_no_query_params(self):
         """Test request with no query parameters."""
         scope = self.create_test_scope()
-        request = Request.from_bytes(scope, b"")
+
+        async def mock_receive():
+            return {"type": "http.request", "body": b"", "more_body": False}
+
+        request = await Request.from_asgi(scope, mock_receive)
 
         assert request.query_params == {}
-        assert request.query_params_multi == {}
-        assert request.get_query_params("any") == []
+        assert request.query_params_multi_values == {}
+        assert request.query_params_multi_values.get("any", []) == []
 
-    def test_single_value_params(self):
+    @pytest.mark.asyncio
+    async def test_single_value_params(self):
         """Test query parameters with single values."""
         scope = self.create_test_scope(b"name=John&age=30&city=NYC")
-        request = Request.from_bytes(scope, b"")
+
+        async def mock_receive():
+            return {"type": "http.request", "body": b"", "more_body": False}
+
+        request = await Request.from_asgi(scope, mock_receive)
 
         # Single value access
         assert request.query_params == {"name": "John", "age": "30", "city": "NYC"}
-        assert request.get_query_param("name") == "John"
+        assert request.query_params.get("name") == "John"
 
         # Multi-value access should return lists
-        assert request.query_params_multi == {
+        assert request.query_params_multi_values == {
             "name": ["John"],
             "age": ["30"],
             "city": ["NYC"],
         }
-        assert request.get_query_params("name") == ["John"]
-        assert request.get_query_params("age") == ["30"]
+        assert request.query_params_multi_values.get("name") == ["John"]
+        assert request.query_params_multi_values.get("age") == ["30"]
 
-    def test_multi_value_params(self):
+    @pytest.mark.asyncio
+    async def test_multi_value_params(self):
         """Test query parameters with multiple values."""
         scope = self.create_test_scope(b"tags=python&tags=web&tags=api&limit=10")
-        request = Request.from_bytes(scope, b"")
+
+        async def mock_receive():
+            return {"type": "http.request", "body": b"", "more_body": False}
+
+        request = await Request.from_asgi(scope, mock_receive)
 
         # Single value access (first value)
         assert request.query_params["tags"] == "python"
         assert request.query_params["limit"] == "10"
-        assert request.get_query_param("tags") == "python"
+        assert request.query_params.get("tags") == "python"
 
         # Multi-value access (all values)
-        assert request.query_params_multi["tags"] == ["python", "web", "api"]
-        assert request.query_params_multi["limit"] == ["10"]
-        assert request.get_query_params("tags") == ["python", "web", "api"]
-        assert request.get_query_params("limit") == ["10"]
+        assert request.query_params_multi_values["tags"] == ["python", "web", "api"]
+        assert request.query_params_multi_values["limit"] == ["10"]
+        assert request.query_params_multi_values.get("tags") == ["python", "web", "api"]
+        assert request.query_params_multi_values.get("limit") == ["10"]
 
-    def test_empty_value_params(self):
+    @pytest.mark.asyncio
+    async def test_empty_value_params(self):
         """Test query parameters with empty values."""
         scope = self.create_test_scope(b"empty=&name=John&blank=")
-        request = Request.from_bytes(scope, b"")
+
+        async def mock_receive():
+            return {"type": "http.request", "body": b"", "more_body": False}
+
+        request = await Request.from_asgi(scope, mock_receive)
 
         assert request.query_params["empty"] == ""
         assert request.query_params["blank"] == ""
-        assert request.get_query_params("empty") == [""]
-        assert request.get_query_params("blank") == [""]
+        assert request.query_params_multi_values.get("empty") == [""]
+        assert request.query_params_multi_values.get("blank") == [""]
 
-    def test_missing_params(self):
+    @pytest.mark.asyncio
+    async def test_missing_params(self):
         """Test accessing missing query parameters."""
         scope = self.create_test_scope(b"name=John")
-        request = Request.from_bytes(scope, b"")
 
-        assert request.get_query_param("missing", "default") == "default"
-        assert request.get_query_params("missing", ["default"]) == ["default"]
-        assert request.get_query_params("missing") == []
+        async def mock_receive():
+            return {"type": "http.request", "body": b"", "more_body": False}
+
+        request = await Request.from_asgi(scope, mock_receive)
+
+        assert request.query_params.get("missing", "default") == "default"
+        assert request.query_params_multi_values.get("missing", ["default"]) == [
+            "default"
+        ]
+        assert request.query_params_multi_values.get("missing", []) == []
 
 
 class TestResponseCookies:
     """Test Response cookie functionality."""
 
-    def test_no_cookies(self):
+    @pytest.mark.asyncio
+    async def test_no_cookies(self):
         """Test response with no cookies."""
         response = Response("Hello")
         asgi_response = response.to_asgi_response()
@@ -161,7 +214,8 @@ class TestResponseCookies:
         cookie_headers = [h for h in asgi_response["headers"] if h[0] == b"set-cookie"]
         assert len(cookie_headers) == 0
 
-    def test_single_cookie(self):
+    @pytest.mark.asyncio
+    async def test_single_cookie(self):
         """Test response with a single cookie."""
         response = Response("Hello")
         response.set_cookie("session", "abc123")
@@ -172,7 +226,8 @@ class TestResponseCookies:
         assert len(cookie_headers) == 1
         assert cookie_headers[0][1] == b"session=abc123; Path=/"
 
-    def test_multiple_cookies(self):
+    @pytest.mark.asyncio
+    async def test_multiple_cookies(self):
         """Test response with multiple cookies."""
         response = Response("Hello")
         response.set_cookie("session", "abc123")
@@ -191,7 +246,8 @@ class TestResponseCookies:
         assert "user_id=456; Max-Age=3600; Path=/" in cookie_strings
         assert "theme=dark; Path=/; Secure; HttpOnly" in cookie_strings
 
-    def test_cookie_with_all_attributes(self):
+    @pytest.mark.asyncio
+    async def test_cookie_with_all_attributes(self):
         """Test cookie with all possible attributes."""
         response = Response("Hello")
         expires = datetime(2025, 12, 31, 23, 59, 59)
@@ -223,7 +279,8 @@ class TestResponseCookies:
         assert "HttpOnly" in cookie_value
         assert "SameSite=Strict" in cookie_value
 
-    def test_delete_cookie(self):
+    @pytest.mark.asyncio
+    async def test_delete_cookie(self):
         """Test deleting a cookie."""
         response = Response("Hello")
         response.delete_cookie("old_session", path="/admin")
@@ -238,7 +295,8 @@ class TestResponseCookies:
         assert "Max-Age=0" in cookie_value
         assert "Path=/admin" in cookie_value
 
-    def test_clear_cookies(self):
+    @pytest.mark.asyncio
+    async def test_clear_cookies(self):
         """Test clearing all cookies."""
         response = Response("Hello")
         response.set_cookie("cookie1", "value1")
@@ -257,7 +315,8 @@ class TestResponseCookies:
         cookie_headers = [h for h in asgi_response["headers"] if h[0] == b"set-cookie"]
         assert len(cookie_headers) == 0
 
-    def test_method_chaining(self):
+    @pytest.mark.asyncio
+    async def test_method_chaining(self):
         """Test that cookie methods support chaining."""
         response = (
             Response("Hello")
