@@ -190,45 +190,26 @@ class Route:
         """
         for param_name in self.expected_path_params:
             handler_param = sig.parameters[param_name]
-            route_param_type = self.param_types[param_name]
+            path_param_type = self.param_types[param_name]
 
             # If handler parameter has type annotation, validate it matches
             if handler_param.annotation != inspect.Parameter.empty:
                 annotation = handler_param.annotation
 
-                # Check type compatibility
-                if route_param_type == int and annotation != int:
+                # Define expected types for each path parameter type
+                expected_types = {
+                    int: {int},
+                    float: {float},
+                    uuid.UUID: {uuid.UUID},
+                    str: {str},
+                    "multipath": {str},
+                }
+
+                # Check if annotation matches expected type
+                if annotation not in expected_types.get(path_param_type, set()):
                     raise ValueError(
                         f"Parameter '{param_name}' type mismatch: "
-                        f"route expects int but handler annotated as {annotation}"
-                    )
-                elif route_param_type == float and annotation != float:
-                    raise ValueError(
-                        f"Parameter '{param_name}' type mismatch: "
-                        f"route expects float but handler annotated as {annotation}"
-                    )
-                elif route_param_type == uuid.UUID and annotation != uuid.UUID:
-                    raise ValueError(
-                        f"Parameter '{param_name}' type mismatch: "
-                        f"route expects UUID but handler annotated as {annotation}"
-                    )
-                elif route_param_type == "multipath" and annotation not in (
-                    str,
-                    type(None),
-                    inspect.Parameter.empty,
-                ):
-                    raise ValueError(
-                        f"Parameter '{param_name}' type mismatch: "
-                        f"route multipath parameter should be str but handler annotated as {annotation}"
-                    )
-                elif route_param_type == str and annotation not in (
-                    str,
-                    type(None),
-                    inspect.Parameter.empty,
-                ):
-                    raise ValueError(
-                        f"Parameter '{param_name}' type mismatch: "
-                        f"route expects str but handler annotated as {annotation}"
+                        f"route expects {path_param_type} but handler annotated as {annotation}"
                     )
 
     def _compile_route_pattern(self) -> tuple[re.Pattern, dict[str, Any]]:
