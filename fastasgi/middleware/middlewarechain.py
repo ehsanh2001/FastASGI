@@ -66,28 +66,31 @@ class MiddlewareChain:
             If middleware are registered as [A, B, C], the execution flow will be:
             Request -> A -> B -> C -> endpoint -> C -> B -> A -> Response
         """
-        app = endpoint
+        # Return original endpoint if no middleware
+        if not self._middlewares:
+            return endpoint
 
-        # Process middleware in reverse order to create proper nesting
-        for mw in reversed(self._middlewares):
-            next_app = app
+        # Build the chain from endpoint outward by wrapping each middleware
+        current_handler = endpoint
 
-            def make_middleware(middleware_func, next_handler):
-                """
-                Create a middleware wrapper function.
+        # Process middleware in reverse order (last registered = closest to endpoint)
+        for middleware in reversed(self._middlewares):
+            # Capture the current handler in a closure
+            next_handler = current_handler
 
-                This closure is necessary to capture the current middleware
-                and next handler values in the loop iteration.
-                """
+            async def middleware_handler(
+                request: Request, mw=middleware, next_app=next_handler
+            ):
+                # Create the call_next function for this middleware
+                async def call_next(req: Request):
+                    return await next_app(req)
 
-                async def wrapped(request: Request):
-                    return await middleware_func(request, next_handler)
+                # Execute the middleware
+                return await mw(request, call_next)
 
-                return wrapped
+            current_handler = middleware_handler
 
-            app = make_middleware(mw, next_app)
-
-        return app
+        return current_handler
 
     def count(self) -> int:
         """Return the number of middleware in the chain."""
