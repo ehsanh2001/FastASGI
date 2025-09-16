@@ -7,7 +7,6 @@ import pytest
 import json
 from fastasgi import FastASGI, APIRouter, Route, Request, Response
 from fastasgi.response import text_response, json_response
-from test_utils import create_request_with_body
 
 
 class TestRoute:
@@ -65,7 +64,12 @@ class TestRoute:
             "query_string": b"",
             "headers": [],
         }
-        request = create_request_with_body(scope, b"")
+
+        # Create mock receive function that returns empty body
+        async def mock_receive():
+            return {"type": "http.request", "body": b"", "more_body": False}
+
+        request = Request(scope, mock_receive)
         await request.load_body()  # Load the body
         response = await route.handle(request)
         assert isinstance(response, Response)
