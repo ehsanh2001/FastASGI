@@ -140,3 +140,53 @@ class TestLifespanEvents:
         send.assert_called_once_with(
             {"type": "lifespan.shutdown.failed", "message": "Shutdown failed"}
         )
+
+    @pytest.mark.asyncio
+    async def test_multiple_lifespan_handlers(self):
+        """Test multiple handlers for the same lifespan event."""
+        startup_order = []
+        shutdown_order = []
+
+        app = FastASGI()
+
+        @app.on_event("startup")
+        async def startup_1():
+            startup_order.append("first")
+
+        @app.on_event("startup")
+        async def startup_2():
+            startup_order.append("second")
+
+        @app.on_event("shutdown")
+        async def shutdown_1():
+            shutdown_order.append("first")
+
+        @app.on_event("shutdown")
+        async def shutdown_2():
+            shutdown_order.append("second")
+
+        scope = {"type": "lifespan"}
+        sent_messages = []
+
+        async def send(message):
+            sent_messages.append(message)
+
+        # Test startup
+        async def receive_startup():
+            return {"type": "lifespan.startup"}
+
+        await app._handle_lifespan(scope, receive_startup, send)
+
+        assert startup_order == ["first", "second"]
+        assert {"type": "lifespan.startup.complete"} in sent_messages
+
+        # Test shutdown
+        sent_messages.clear()
+
+        async def receive_shutdown():
+            return {"type": "lifespan.shutdown"}
+
+        await app._handle_lifespan(scope, receive_shutdown, send)
+
+        assert shutdown_order == ["first", "second"]
+        assert {"type": "lifespan.shutdown.complete"} in sent_messages
