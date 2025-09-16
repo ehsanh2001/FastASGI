@@ -338,5 +338,6 @@ class FastASGI:
             {
                 "type": "http.response.body",
                 "body": asgi_response["body"],
+                "more_body": False,
             }
         )
