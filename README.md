@@ -69,7 +69,7 @@ FastASGI is designed to be **easily understood and extended**:
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/fastasgi.git
+git clone https://github.com/ehsanh2001/FastASGI.git
 cd fastasgi
 
 # Install development dependencies
