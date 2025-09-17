@@ -53,18 +53,19 @@ class MultipartParser:
 
         # Process each part (skip first empty part and last closing part)
         for part in parts[1:-1]:
-            part = part.strip()
-
             # If the part is empty or just the closing boundary, skip it.
             # If the body is well-formed, this won't happen, but to be safe.
             if not part or part == b"--":
                 continue
 
-            # Split headers from content
+            # Split headers from content BEFORE stripping to preserve empty content
             if b"\r\n\r\n" not in part:
                 continue
 
             headers_section, content = part.split(b"\r\n\r\n", 1)
+            # Strip only the headers section, not the content
+            headers_section = headers_section.strip()
+
             content_disposition = self._get_part_content_disposition(headers_section)
             field_name = self._extract_field_name(content_disposition)
             filename = self._extract_filename(content_disposition)
@@ -75,19 +76,27 @@ class MultipartParser:
             if filename:
                 # This is a file upload - write to temp file
                 content_type = self._get_part_content_type(headers_section)
-                temp_path = self._write_to_temp_file(content)
+
+                # Strip only the final CRLF from content as it's part of multipart formatting
+                # not actual file content.
+                file_content = content.removesuffix(b"\r\n")
+
+                temp_path = self._write_to_temp_file(file_content)
 
                 upload_file = UploadFile(
                     filename=filename,
                     temp_path=temp_path,
-                    size=len(content),
+                    size=len(file_content),
                     content_type=content_type,
                 )
                 files.append(upload_file)
             else:
                 # This is a regular form field
+                # Strip only the final CRLF from content as it's part of multipart formatting
+                field_content = content.removesuffix(b"\r\n")
+
                 try:
-                    form_data[field_name] = content.decode("utf-8")
+                    form_data[field_name] = field_content.decode("utf-8")
                 except UnicodeDecodeError:
                     # Handle binary form data as empty string
                     form_data[field_name] = ""
