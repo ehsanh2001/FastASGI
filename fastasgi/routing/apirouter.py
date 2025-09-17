@@ -4,7 +4,7 @@ Router class for FastASGI framework.
 Manages collections of routes and handles route matching and dispatch.
 """
 
-from typing import List, Optional, Set, Callable, Awaitable
+from typing import List, Optional, Set, Callable, Awaitable, Dict
 from .route import Route
 from ..request import Request
 from ..response import Response
@@ -28,6 +28,42 @@ class APIRouter:
         """
         self.prefix = prefix.rstrip("/")
         self.routes: List[Route] = []
+        self._route_definition_order: Dict[Route, int] = (
+            {}
+        )  # Maps routes to their definition order
+
+    def _calculate_route_specificity(self, route: Route) -> tuple:
+        """
+        Calculate route specificity for sorting purposes.
+
+        Returns a tuple that can be used for sorting routes from most specific to least specific.
+        Higher values in the tuple indicate higher specificity.
+
+        Args:
+            route: The route to calculate specificity for
+
+        Returns:
+            Tuple of (priority, literal_segments, total_segments, -definition_order)
+        """
+        # Handle root path specially
+        if route.path == "/":
+            segments = [""]
+        else:
+            segments = route.path.strip("/").split("/")
+
+        # Count literal segments (non-parameterized)
+        literal_segments = sum(1 for seg in segments if not seg.startswith("{"))
+        total_segments = len(segments)
+
+        # Get definition order (default to 0 if not found)
+        definition_order = self._route_definition_order.get(route, 0)
+
+        return (
+            route.priority,  # User-defined priority (highest precedence)
+            literal_segments,  # More literal segments = more specific
+            total_segments,  # More total segments = more specific
+            -definition_order,  # Earlier definition wins ties
+        )
 
     def add_route(
         self,
@@ -52,10 +88,14 @@ class APIRouter:
         full_path = self.prefix + path if path != "/" else (self.prefix or "/")
 
         route = Route(full_path, handler, methods, priority)
+
+        # Track definition order for consistent sorting
+        self._route_definition_order[route] = len(self._route_definition_order)
+
         self.routes.append(route)
 
-        # Sort routes by priority (higher priority first), then by path length (longer first)
-        self.routes.sort(key=lambda r: (-r.priority, -len(r.path)))
+        # Sort routes by specificity (most specific first)
+        self.routes.sort(key=self._calculate_route_specificity, reverse=True)
 
         return route
 
@@ -79,10 +119,14 @@ class APIRouter:
             new_path = combined_prefix + route.path if combined_prefix else route.path
 
             new_route = Route(new_path, route.handler, route.methods, route.priority)
+
+            # Track definition order for included routes
+            self._route_definition_order[new_route] = len(self._route_definition_order)
+
             self.routes.append(new_route)
 
-        # Re-sort routes after inclusion
-        self.routes.sort(key=lambda r: (-r.priority, -len(r.path)))
+        # Re-sort routes after inclusion using specificity
+        self.routes.sort(key=self._calculate_route_specificity, reverse=True)
 
     def find_route(self, path: str, method: str) -> Optional[tuple[Route, dict]]:
         """
