@@ -4,9 +4,8 @@ Compatible with FastAPI's GZipMiddleware interface.
 """
 
 import gzip
-from typing import Union, Callable, Awaitable
-from urllib.request import Request
-from ..middlewarechain import MiddlewareCallable
+from typing import Callable, Awaitable
+from ...request import Request
 from ...response import Response
 
 
