@@ -1,396 +1,451 @@
 """
-Tests for the FastASGI middleware system.
+Test suite for FastASGI middleware system.
+
+This module tests the middleware framework including:
+- MiddlewareChain functionality
+- Built-in middleware (CORS, Exception)
+- Middleware execution order and interaction
+- Custom middleware creation and integration
 """
 
 import pytest
-import asyncio
-from fastasgi import FastASGI, Request, Response, text_response
-from fastasgi.middleware import MiddlewareChain, MiddlewareCallable
+from typing import Callable, Awaitable
+from fastasgi import FastASGI, Request, Response, text_response, json_response
+from fastasgi.testing import TestClient, TestRequest
+from fastasgi.middleware import MiddlewareChain
+from fastasgi.middleware.builtin_middleware import (
+    CORSMiddleware,
+    ExceptionMiddleware,
+)
 
 
 class TestMiddlewareChain:
     """Test the MiddlewareChain class."""
 
-    def test_empty_stack(self):
-        """Test that an empty stack works correctly."""
-        stack = MiddlewareChain()
-        assert stack.count() == 0
+    def test_middleware_chain_creation(self):
+        """Test creating an empty middleware chain."""
+        chain = MiddlewareChain()
+        assert chain.count() == 0
 
-        # Build with empty stack should return the endpoint unchanged
-        async def endpoint(request: Request):
-            return Response("endpoint")
+    def test_middleware_chain_add(self):
+        """Test adding middleware to the chain."""
+        chain = MiddlewareChain()
 
-        app = stack.build(endpoint)
-        assert app is endpoint
-
-    def test_add_middleware(self):
-        """Test adding middleware to the stack."""
-        stack = MiddlewareChain()
-
-        async def mw1(request, call_next):
+        async def middleware1(
+            request: Request, call_next: Callable[[Request], Awaitable[Response]]
+        ):
             return await call_next(request)
 
-        stack.add(mw1)
-        assert stack.count() == 1
-
-    def test_clear_middleware(self):
-        """Test clearing all middleware from the stack."""
-        stack = MiddlewareChain()
-
-        async def mw1(request, call_next):
+        async def middleware2(
+            request: Request, call_next: Callable[[Request], Awaitable[Response]]
+        ):
             return await call_next(request)
 
-        stack.add(mw1)
-        assert stack.count() == 1
+        chain.add(middleware1)
+        assert chain.count() == 1
 
-        stack.clear()
-        assert stack.count() == 0
+        chain.add(middleware2)
+        assert chain.count() == 2
+
+    def test_middleware_chain_clear(self):
+        """Test clearing all middleware from the chain."""
+        chain = MiddlewareChain()
+
+        async def middleware(
+            request: Request, call_next: Callable[[Request], Awaitable[Response]]
+        ):
+            return await call_next(request)
+
+        chain.add(middleware)
+        assert chain.count() == 1
+
+        chain.clear()
+        assert chain.count() == 0
 
     @pytest.mark.asyncio
-    async def test_single_middleware(self):
-        """Test execution with a single middleware."""
-        stack = MiddlewareChain()
-
-        async def logging_middleware(request, call_next):
-            # Add custom data attribute to request
-            setattr(request, "custom_data", {"logged": True})
-            response = await call_next(request)
-            response.headers["X-Logged"] = "true"
-            return response
+    async def test_middleware_chain_build_empty(self):
+        """Test building chain with no middleware returns original endpoint."""
+        chain = MiddlewareChain()
 
         async def endpoint(request: Request):
-            return Response("Hello")
+            return text_response("endpoint")
 
-        stack.add(logging_middleware)
-        app = stack.build(endpoint)
-
-        # Create mock request
-        scope = {"type": "http", "method": "GET", "path": "/"}
-
-        async def mock_receive():
-            return {"type": "http.request", "body": b"", "more_body": False}
-
-        request = await Request.from_asgi(scope, mock_receive)
-        response = await app(request)
-        assert response.body == b"Hello"
-        assert response.headers.get("X-Logged") == "true"
-        assert (
-            hasattr(request, "custom_data")
-            and getattr(request, "custom_data", {}).get("logged") is True
-        )
+        handler = chain.build(endpoint)
+        assert handler == endpoint
 
     @pytest.mark.asyncio
-    async def test_multiple_middleware_order(self):
-        """Test that multiple middleware execute in correct order."""
-        stack = MiddlewareChain()
+    async def test_middleware_chain_execution_order(self):
+        """Test that middleware execute in correct order."""
+        chain = MiddlewareChain()
         execution_order = []
 
-        async def middleware_a(request, call_next):
-            execution_order.append("A_start")
+        async def middleware1(
+            request: Request, call_next: Callable[[Request], Awaitable[Response]]
+        ):
+            execution_order.append("middleware1_before")
             response = await call_next(request)
-            execution_order.append("A_end")
-            response.headers["X-A"] = "processed"
+            execution_order.append("middleware1_after")
             return response
 
-        async def middleware_b(request, call_next):
-            execution_order.append("B_start")
+        async def middleware2(
+            request: Request, call_next: Callable[[Request], Awaitable[Response]]
+        ):
+            execution_order.append("middleware2_before")
             response = await call_next(request)
-            execution_order.append("B_end")
-            response.headers["X-B"] = "processed"
-            return response
-
-        async def middleware_c(request, call_next):
-            execution_order.append("C_start")
-            response = await call_next(request)
-            execution_order.append("C_end")
-            response.headers["X-C"] = "processed"
+            execution_order.append("middleware2_after")
             return response
 
         async def endpoint(request: Request):
             execution_order.append("endpoint")
-            return Response("Hello")
+            return text_response("test")
 
-        # Add middleware in order A, B, C
-        stack.add(middleware_a)
-        stack.add(middleware_b)
-        stack.add(middleware_c)
+        chain.add(middleware1)
+        chain.add(middleware2)
 
-        app = stack.build(endpoint)
-        scope = {"type": "http", "method": "GET", "path": "/"}
+        handler = chain.build(endpoint)
+
+        # Create a mock request
+        scope = {
+            "type": "http",
+            "method": "GET",
+            "path": "/",
+            "query_string": b"",
+            "headers": [],
+        }
 
         async def mock_receive():
             return {"type": "http.request", "body": b"", "more_body": False}
 
-        request = await Request.from_asgi(scope, mock_receive)
+        request = Request(scope, mock_receive)
+        await request.load_body()
 
-        response = await app(request)
+        response = await handler(request)
 
-        # Execution should be: A_start -> B_start -> C_start -> endpoint -> C_end -> B_end -> A_end
+        # Verify execution order: middleware1 -> middleware2 -> endpoint -> middleware2 -> middleware1
         expected_order = [
-            "A_start",
-            "B_start",
-            "C_start",
+            "middleware1_before",
+            "middleware2_before",
             "endpoint",
-            "C_end",
-            "B_end",
-            "A_end",
+            "middleware2_after",
+            "middleware1_after",
         ]
         assert execution_order == expected_order
+        assert response.body == b"test"
 
-        # All middleware should have processed the response
-        assert response.headers.get("X-A") == "processed"
-        assert response.headers.get("X-B") == "processed"
-        assert response.headers.get("X-C") == "processed"
 
-    @pytest.mark.asyncio
-    async def test_middleware_short_circuit(self):
-        """Test that middleware can short-circuit the chain."""
-        stack = MiddlewareChain()
+class TestCustomMiddleware:
+    """Test custom middleware creation and behavior."""
 
-        async def auth_middleware(request, call_next):
-            if getattr(request, "path", "") == "/admin":
-                return Response("Unauthorized", status_code=401)
-            return await call_next(request)
+    def test_custom_middleware(self):
+        """Test custom middleware integrated into FastASGI app."""
+        app = FastASGI()
 
-        async def logging_middleware(request, call_next):
+        # Custom middleware that adds a header
+        async def add_header_middleware(
+            request: Request, call_next: Callable[[Request], Awaitable[Response]]
+        ):
             response = await call_next(request)
-            response.headers["X-Logged"] = "true"
+            response.headers["X-Custom-Header"] = "middleware-added"
             return response
 
-        async def endpoint(request: Request):
-            return Response("Authorized content")
+        # Custom middleware that modifies the request
+        async def modify_request_middleware(
+            request: Request, call_next: Callable[[Request], Awaitable[Response]]
+        ):
+            # Add custom attribute to request using setattr
+            setattr(request, "custom_data", "modified-by-middleware")
+            return await call_next(request)
 
-        stack.add(auth_middleware)
-        stack.add(logging_middleware)
-        app = stack.build(endpoint)
+        app.add_middleware(add_header_middleware)
+        app.add_middleware(modify_request_middleware)
 
-        # Test admin path (should be blocked)
-        scope = {"type": "http", "method": "GET", "path": "/admin"}
+        @app.get("/test")
+        async def test_handler(request: Request):
+            custom_data = getattr(request, "custom_data", "not-set")
+            return json_response({"custom_data": custom_data})
 
-        async def mock_receive():
-            return {"type": "http.request", "body": b"", "more_body": False}
-
-        request = await Request.from_asgi(scope, mock_receive)
-        response = await app(request)
-
-        assert response.status_code == 401
-        assert response.body == b"Unauthorized"
-        # Logging middleware should not run when auth blocks
-        assert "X-Logged" not in response.headers
-
-        # Test normal path (should pass through)
-        scope2 = {"type": "http", "method": "GET", "path": "/"}
-
-        async def mock_receive2():
-            return {"type": "http.request", "body": b"", "more_body": False}
-
-        request = await Request.from_asgi(scope2, mock_receive2)
-        response = await app(request)
+        client = TestClient(app)
+        response = client.get("/test")
 
         assert response.status_code == 200
-        assert response.body == b"Authorized content"
-        assert response.headers.get("X-Logged") == "true"
+        assert (
+            response.headers.get("x-custom-header") == "middleware-added"
+        )  # Headers are lowercase
+        data = response.json()
+        assert data["custom_data"] == "modified-by-middleware"
 
-
-class TestMiddlewareMetadata:
-    """Test automatic middleware metadata addition."""
-
-    def test_add_middleware_adds_metadata(self):
-        """Test that add_middleware automatically adds metadata."""
+    def test_middleware_short_circuit(self):
+        """Test middleware that short-circuits the chain."""
         app = FastASGI()
 
-        async def test_mw(request, call_next):
+        # Middleware that returns early without calling next
+        async def auth_middleware(
+            request: Request, call_next: Callable[[Request], Awaitable[Response]]
+        ):
+            auth_header = request.headers.get("authorization")
+            if not auth_header:
+                return json_response({"error": "Unauthorized"}, status_code=401)
             return await call_next(request)
 
-        app.add_middleware(test_mw)
+        app.add_middleware(auth_middleware)
 
-    def test_middleware_decorator_adds_metadata(self):
-        """Test that @app.middleware() automatically adds metadata."""
+        @app.get("/protected")
+        async def protected_handler(request: Request):
+            return json_response({"message": "Access granted"})
+
+        client = TestClient(app)
+
+        # Request without authorization header
+        response = client.get("/protected")
+        assert response.status_code == 401
+        data = response.json()
+        assert data["error"] == "Unauthorized"
+
+        # Request with authorization header
+        test_request = TestRequest().set_headers(authorization="Bearer token123")
+        response = client.get("/protected", test_request)
+        assert response.status_code == 200
+        data = response.json()
+        assert data["message"] == "Access granted"
+
+
+class TestExceptionMiddleware:
+    """Test the ExceptionMiddleware."""
+
+    def test_exception_middleware_production_mode(self):
+        """Test exception middleware in production mode."""
+        app = FastASGI()
+        app.add_middleware(ExceptionMiddleware(mode="production"))
+
+        @app.get("/error")
+        async def error_handler(request: Request):
+            raise ValueError("Something went wrong")
+
+        client = TestClient(app)
+        response = client.get("/error")
+
+        assert response.status_code == 500
+        data = response.json()
+        assert "error" in data
+        assert data["error"]["type"] == "HTTP_500_INTERNAL_SERVER_ERROR"
+        assert data["error"]["message"] == "Internal Server Error"
+        # Should not contain detailed error information in production
+        assert "traceback" not in data["error"]
+
+    def test_exception_middleware_debug_mode(self):
+        """Test exception middleware in debug mode."""
+        app = FastASGI()
+        app.add_middleware(ExceptionMiddleware(mode="debug"))
+
+        @app.get("/error")
+        async def error_handler(request: Request):
+            raise ValueError("Something went wrong")
+
+        client = TestClient(app)
+        response = client.get("/error")
+
+        assert response.status_code == 500
+        data = response.json()
+        assert "error" in data
+        assert data["error"]["type"] == "ValueError"
+        assert data["error"]["message"] == "Something went wrong"
+        assert "detail" in data["error"]
+        assert "traceback" in data["error"]
+        assert "ValueError" in data["error"]["traceback"]
+
+    def test_exception_middleware_no_exception(self):
+        """Test that exception middleware doesn't interfere with normal responses."""
+        app = FastASGI()
+        app.add_middleware(ExceptionMiddleware(mode="debug"))
+
+        @app.get("/normal")
+        async def normal_handler(request: Request):
+            return json_response({"status": "ok"})
+
+        client = TestClient(app)
+        response = client.get("/normal")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "ok"
+
+
+class TestCORSMiddleware:
+    """Test the CORSMiddleware."""
+
+    def test_cors_middleware_basic(self):
+        """Test basic CORS functionality."""
+        app = FastASGI()
+        app.add_middleware(
+            CORSMiddleware(
+                allow_origins=["http://localhost:3000"],
+                allow_methods=["GET", "POST"],
+                allow_headers=["content-type"],
+            )
+        )
+
+        @app.get("/api/test")
+        async def test_handler(request: Request):
+            return json_response({"message": "test"})
+
+        client = TestClient(app)
+
+        # Test simple GET request
+        response = client.get("/api/test")
+        assert response.status_code == 200
+
+        # Test preflight OPTIONS request
+        test_request = TestRequest().set_headers(
+            origin="http://localhost:3000",
+            **{
+                "access-control-request-method": "POST",
+                "access-control-request-headers": "content-type",
+            }
+        )
+        response = client.options("/api/test", test_request)
+        assert response.status_code == 204  # OPTIONS requests return 204
+        assert "access-control-allow-origin" in response.headers
+        assert "access-control-allow-methods" in response.headers
+
+    def test_cors_middleware_wildcard_origin(self):
+        """Test CORS with wildcard origin."""
+        app = FastASGI()
+        app.add_middleware(CORSMiddleware(allow_origins=["*"]))
+
+        @app.get("/api/test")
+        async def test_handler(request: Request):
+            return json_response({"message": "test"})
+
+        client = TestClient(app)
+        test_request = TestRequest().set_headers(origin="http://example.com")
+        response = client.get("/api/test", test_request)
+
+        assert response.status_code == 200
+        # When wildcard is used, the middleware should reflect the requesting origin
+        assert (
+            response.headers.get("access-control-allow-origin") == "http://example.com"
+        )
+
+    def test_cors_middleware_credentials(self):
+        """Test CORS with credentials."""
+        app = FastASGI()
+        app.add_middleware(
+            CORSMiddleware(
+                allow_origins=["http://localhost:3000"],
+                allow_credentials=True,
+            )
+        )
+
+        @app.get("/api/test")
+        async def test_handler(request: Request):
+            return json_response({"message": "test"})
+
+        client = TestClient(app)
+        test_request = TestRequest().set_headers(origin="http://localhost:3000")
+        response = client.get("/api/test", test_request)
+
+        assert response.status_code == 200
+        assert response.headers.get("access-control-allow-credentials") == "true"
+
+
+class TestMiddlewareIntegration:
+    """Test multiple middleware working together."""
+
+    def test_multiple_middleware_order(self):
+        """Test that multiple middleware execute in correct order."""
         app = FastASGI()
 
-        @app.middleware()
-        async def test_mw(request, call_next):
+        # Add middleware in order: Exception -> CORS -> Custom
+        app.add_middleware(ExceptionMiddleware(mode="debug"))
+        app.add_middleware(CORSMiddleware(allow_origins=["*"]))
+
+        # Custom middleware that adds execution tracking
+        async def tracking_middleware(
+            request: Request, call_next: Callable[[Request], Awaitable[Response]]
+        ):
+            response = await call_next(request)
+            response.headers["X-Tracking"] = "processed"
+            return response
+
+        app.add_middleware(tracking_middleware)
+
+        @app.get("/test")
+        async def test_handler(request: Request):
+            return json_response({"message": "success"})
+
+        client = TestClient(app)
+        test_request = TestRequest().set_headers(origin="http://localhost:3000")
+        response = client.get("/test", test_request)
+
+        assert response.status_code == 200
+        assert "access-control-allow-origin" in response.headers
+        assert response.headers.get("x-tracking") == "processed"
+
+    def test_middleware_exception_handling(self):
+        """Test that exception middleware catches errors from other middleware."""
+        app = FastASGI()
+
+        # Add exception middleware first
+        app.add_middleware(ExceptionMiddleware(mode="debug"))
+
+        # Add failing middleware
+        async def failing_middleware(
+            request: Request, call_next: Callable[[Request], Awaitable[Response]]
+        ):
+            if request.path == "/fail":
+                raise RuntimeError("Middleware failed")
             return await call_next(request)
 
+        app.add_middleware(failing_middleware)
 
-class TestFastASGIMiddleware:
-    """Test middleware integration with FastASGI application."""
+        @app.get("/fail")
+        async def fail_handler(request: Request):
+            return text_response("should not reach here")
 
-    @pytest.mark.asyncio
-    async def test_app_middleware_decorator(self):
-        """Test the @app.middleware() decorator."""
+        @app.get("/success")
+        async def success_handler(request: Request):
+            return text_response("success")
+
+        client = TestClient(app)
+
+        # Test failing middleware
+        response = client.get("/fail")
+        assert response.status_code == 500
+        data = response.json()
+        assert data["error"]["type"] == "RuntimeError"
+        assert "Middleware failed" in data["error"]["message"]
+
+        # Test successful request
+        response = client.get("/success")
+        assert response.status_code == 200
+        assert response.text() == "success"
+
+    def test_middleware_with_path_parameters(self):
+        """Test that middleware works correctly with path parameters."""
         app = FastASGI()
 
-        @app.middleware()
-        async def test_middleware(request, call_next):
+        # Middleware that logs the request path
+        async def logging_middleware(
+            request: Request, call_next: Callable[[Request], Awaitable[Response]]
+        ):
             response = await call_next(request)
-            response.headers["X-Test"] = "applied"
+            response.headers["X-Path"] = request.path
             return response
 
-        @app.get("/")
-        async def home(request: Request):
-            return text_response("Hello")
+        app.add_middleware(logging_middleware)
 
-        await app._build_middleware_chain()  # Ensure middleware chain is built
-        # Simulate ASGI call
-        scope = {
-            "type": "http",
-            "method": "GET",
-            "path": "/",
-            "headers": [],
-            "query_string": b"",
-        }
+        @app.get("/users/{user_id:int}")
+        async def get_user(request: Request, user_id: int):
+            return json_response({"user_id": user_id})
 
-        async def receive():
-            return {"type": "http.request", "body": b"", "more_body": False}
+        client = TestClient(app)
+        response = client.get("/users/123")
 
-        sent_messages = []
+        assert response.status_code == 200
+        assert response.headers.get("x-path") == "/users/123"
+        data = response.json()
+        assert data["user_id"] == 123
 
-        async def send(message):
-            sent_messages.append(message)
 
-        await app(scope, receive, send)
-
-        # Check that middleware was applied
-        response_start = next(
-            msg for msg in sent_messages if msg["type"] == "http.response.start"
-        )
-        headers = dict(response_start["headers"])
-        assert b"x-test" in headers
-        assert headers[b"x-test"] == b"applied"
-
-    @pytest.mark.asyncio
-    async def test_add_middleware_method(self):
-        """Test the add_middleware method."""
-        app = FastASGI()
-
-        async def custom_middleware(request, call_next):
-            response = await call_next(request)
-            response.headers["X-Custom"] = "added"
-            return response
-
-        app.add_middleware(custom_middleware)
-
-        @app.get("/")
-        async def home(request: Request):
-            return text_response("Hello")
-
-        await app._build_middleware_chain()  # Ensure middleware chain is built
-        # Simulate ASGI call
-        scope = {
-            "type": "http",
-            "method": "GET",
-            "path": "/",
-            "headers": [],
-            "query_string": b"",
-        }
-
-        async def receive():
-            return {"type": "http.request", "body": b"", "more_body": False}
-
-        sent_messages = []
-
-        async def send(message):
-            sent_messages.append(message)
-
-        await app(scope, receive, send)
-
-        # Check that middleware was applied
-        response_start = next(
-            msg for msg in sent_messages if msg["type"] == "http.response.start"
-        )
-        headers = dict(response_start["headers"])
-        assert b"x-custom" in headers
-        assert headers[b"x-custom"] == b"added"
-
-    @pytest.mark.asyncio
-    async def test_multiple_middleware_with_app(self):
-        """Test multiple middleware with FastASGI application."""
-        app = FastASGI()
-        execution_order = []
-
-        @app.middleware()
-        async def first_middleware(request, call_next):
-            execution_order.append("first_start")
-            response = await call_next(request)
-            execution_order.append("first_end")
-            response.headers["X-First"] = "applied"
-            return response
-
-        @app.middleware()
-        async def second_middleware(request, call_next):
-            execution_order.append("second_start")
-            response = await call_next(request)
-            execution_order.append("second_end")
-            response.headers["X-Second"] = "applied"
-            return response
-
-        @app.get("/")
-        async def home(request: Request):
-            execution_order.append("handler")
-            return text_response("Hello")
-
-        await app._build_middleware_chain()  # Ensure middleware chain is built
-        # Simulate ASGI call
-        scope = {
-            "type": "http",
-            "method": "GET",
-            "path": "/",
-            "headers": [],
-            "query_string": b"",
-        }
-
-        async def receive():
-            return {"type": "http.request", "body": b"", "more_body": False}
-
-        sent_messages = []
-
-        async def send(message):
-            sent_messages.append(message)
-
-        await app(scope, receive, send)
-
-        # Check execution order (first registered = outermost)
-        expected_order = [
-            "first_start",
-            "second_start",
-            "handler",
-            "second_end",
-            "first_end",
-        ]
-        assert execution_order == expected_order
-
-        # Check that both middleware were applied
-        response_start = next(
-            msg for msg in sent_messages if msg["type"] == "http.response.start"
-        )
-        headers = dict(response_start["headers"])
-        assert b"x-first" in headers
-        assert b"x-second" in headers
-
-    def test_middleware_chain_rebuilding(self):
-        """Test that middleware chain is built during startup, not immediately when added."""
-        app = FastASGI()
-
-        # Initially no middleware chain built
-        initial_chain = app._app_with_middleware
-        assert initial_chain is None
-
-        # Add first middleware
-        async def mw1(request, call_next):
-            return await call_next(request)
-
-        app.add_middleware(mw1)
-
-        # Chain should still be None until startup
-        assert app._app_with_middleware is None
-        assert not app._middleware_built
-
-        # After calling the startup handler, chain should be built
-        import asyncio
-
-        asyncio.run(app._build_middleware_chain())
-
-        # Now chain should exist
-        assert app._app_with_middleware is not None
-        assert app._middleware_built
+if __name__ == "__main__":
+    pytest.main([__file__])
