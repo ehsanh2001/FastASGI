@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FastASGI Tutorial - Building an ASGI Framework</title>
+    <link rel="stylesheet" href="styles/tutorial.css" />
+  </head>
+  <body>
+    <div class="container">
+      <!-- Sidebar Navigation -->
+      <aside class="sidebar">
+        <h1>ASGI Tutorial</h1>
+
+        <h2>📚 Sections</h2>
+        <ul>
+          <li><a href="index.html" class="active">🏠 Tutorial Home</a></li>
+          <li><a href="01-introduction.html">🚀 Introduction</a></li>
+          <li>
+            <a href="02-asgi-specification.html">📋 ASGI Specification</a>
+          </li>
+          <li>
+            <a href="03-fastasgi-architecture.html">🏗️ FastASGI Architecture</a>
+          </li>
+          <li>
+            <a href="04-implementation-deep-dive.html"
+              >🔧 Implementation Deep Dive</a
+            >
+          </li>
+          <li>
+            <a href="05-practical-examples.html">💡 Practical Examples</a>
+          </li>
+          <li><a href="06-advanced-topics.html">🔍 Advanced Topics</a></li>
+        </ul>
+
+        <h2>📖 Quick Links</h2>
+        <ul>
+          <li><a href="https://asgi.readthedocs.io/">ASGI Documentation</a></li>
+          <li><a href="https://fastapi.tiangolo.com/">FastAPI</a></li>
+          <li><a href="https://www.starlette.io/">Starlette</a></li>
+          <li>
+            <a href="https://github.com/ehsanh2001/FastASGI"
+              >FastASGI Repository</a
+            >
+          </li>
+        </ul>
+      </aside>
+
+      <!-- Main Content -->
+      <div class="content">
+        <h1>Building an ASGI Framework: Complete Tutorial Series</h1>
+
+        <div class="highlight">
+          <strong>📖 Welcome to the FastASGI Tutorial!</strong> This
+          comprehensive tutorial series will teach you how ASGI (Asynchronous
+          Server Gateway Interface) works and how we built FastASGI, an
+          educational ASGI framework. You'll understand the ASGI specification,
+          explore our implementation decisions, and learn to build your own ASGI
+          applications.
+        </div>
+
+        <h2>🎯 What You'll Learn</h2>
+        <p>
+          This tutorial series is designed to take you from ASGI basics to
+          advanced implementation concepts:
+        </p>
+
+        <ul class="feature-list">
+          <li>
+            <strong>ASGI Fundamentals:</strong> Understanding the async server
+            gateway interface
+          </li>
+          <li>
+            <strong>Protocol Deep Dive:</strong> HTTP, WebSocket, and Lifespan
+            protocols
+          </li>
+          <li>
+            <strong>Framework Architecture:</strong> How to structure an ASGI
+            framework
+          </li>
+          <li>
+            <strong>Implementation Details:</strong> Real code from FastASGI
+            with explanations
+          </li>
+          <li>
+            <strong>Practical Applications:</strong> Building real-world ASGI
+            applications
+          </li>
+          <li>
+            <strong>Advanced Techniques:</strong> Performance, testing, and
+            deployment
+          </li>
+        </ul>
+
+        <h2>📚 Tutorial Structure</h2>
+
+        <div class="implementation-section">
+          <h3><a href="01-introduction.html">🚀 1. Introduction</a></h3>
+          <p>
+            Start here to understand what ASGI is, why it matters, and how it
+            compares to WSGI. Learn about FastASGI's educational goals and the
+            tutorial structure.
+          </p>
+
+          <h4>Topics Covered:</h4>
+          <ul>
+            <li>What is ASGI and why it exists</li>
+            <li>ASGI vs WSGI comparison</li>
+            <li>Introduction to FastASGI framework</li>
+            <li>Tutorial goals and prerequisites</li>
+          </ul>
+        </div>
+
+        <div class="implementation-section">
+          <h3>
+            <a href="02-asgi-specification.html">📋 2. ASGI Specification</a>
+          </h3>
+          <p>
+            Deep dive into the ASGI specification. Understand the
+            scope/receive/send pattern and explore HTTP, WebSocket, and Lifespan
+            protocols.
+          </p>
+
+          <h4>Topics Covered:</h4>
+          <ul>
+            <li>ASGI application callable interface</li>
+            <li>Scope dictionary structure and meaning</li>
+            <li>Receive and send message patterns</li>
+            <li>HTTP protocol implementation</li>
+            <li>WebSocket protocol basics</li>
+            <li>Lifespan events for startup/shutdown</li>
+          </ul>
+        </div>
+
+        <div class="implementation-section">
+          <h3>
+            <a href="03-fastasgi-architecture.html"
+              >🏗️ 3. FastASGI Architecture</a
+            >
+          </h3>
+          <p>
+            Explore FastASGI's architecture and design decisions. Understand how
+            components work together to create a complete ASGI framework.
+          </p>
+
+          <h4>Topics Covered:</h4>
+          <ul>
+            <li>Overall architecture and component relationships</li>
+            <li>Request lifecycle and flow</li>
+            <li>Design principles and trade-offs</li>
+            <li>Core components overview</li>
+          </ul>
+        </div>
+
+        <div class="implementation-section">
+          <h3>
+            <a href="04-implementation-deep-dive.html"
+              >🔧 4. Implementation Deep Dive</a
+            >
+          </h3>
+          <p>
+            Analyze the actual FastASGI implementation code. See how each
+            component is built and understand the implementation details.
+          </p>
+
+          <h4>Topics Covered:</h4>
+          <ul>
+            <li>FastASGI application class implementation</li>
+            <li>Request object design and functionality</li>
+            <li>Response object and ASGI message conversion</li>
+            <li>Routing system with path parameters</li>
+            <li>Middleware chain construction and execution</li>
+            <li>Lifespan event handling</li>
+          </ul>
+        </div>
+
+        <div class="implementation-section">
+          <h3>
+            <a href="05-practical-examples.html">💡 5. Practical Examples</a>
+          </h3>
+          <p>
+            Build real applications with FastASGI. From simple "Hello World" to
+            complex applications with middleware and lifecycle management.
+          </p>
+
+          <h4>Topics Covered:</h4>
+          <ul>
+            <li>Basic application setup</li>
+            <li>Advanced routing patterns</li>
+            <li>Custom middleware development</li>
+            <li>Real-world application structure</li>
+            <li>Error handling strategies</li>
+          </ul>
+        </div>
+
+        <div class="implementation-section">
+          <h3><a href="06-advanced-topics.html">🔍 6. Advanced Topics</a></h3>
+          <p>
+            Learn advanced concepts for production ASGI applications. Covers
+            testing, performance optimization, and deployment strategies.
+          </p>
+
+          <h4>Topics Covered:</h4>
+          <ul>
+            <li>Performance optimization techniques</li>
+            <li>Testing ASGI applications</li>
+            <li>Deployment with ASGI servers</li>
+            <li>Debugging and monitoring</li>
+            <li>ASGI ecosystem overview</li>
+          </ul>
+        </div>
+
+        <h2>🎓 Prerequisites</h2>
+        <p>To get the most out of this tutorial, you should have:</p>
+
+        <ul>
+          <li>
+            <strong>Python Experience:</strong> Comfortable with Python 3.8+
+            syntax
+          </li>
+          <li>
+            <strong>Async Programming:</strong> Basic understanding of
+            async/await
+          </li>
+          <li>
+            <strong>Web Concepts:</strong> Familiarity with HTTP requests and
+            responses
+          </li>
+          <li>
+            <strong>Framework Knowledge:</strong> Experience with any web
+            framework (Flask, Django, etc.)
+          </li>
+        </ul>
+
+        <div class="info">
+          <strong>💡 Learning Path:</strong> While you can jump to specific
+          sections, we recommend following the tutorial in order for the best
+          learning experience. Each section builds on concepts from previous
+          ones.
+        </div>
+
+        <h2>🚀 Ready to Start?</h2>
+        <p>Choose your starting point based on your current knowledge:</p>
+
+        <div class="flow-diagram">
+          <h4>Recommended Learning Path</h4>
+          <a href="01-introduction.html" class="step-box"
+            >New to ASGI? Start Here</a
+          >
+          <span class="arrow">→</span>
+          <a href="02-asgi-specification.html" class="step-box"
+            >Learn the Specification</a
+          >
+          <span class="arrow">→</span>
+          <a href="04-implementation-deep-dive.html" class="step-box"
+            >See the Implementation</a
+          >
+        </div>
+
+        <div class="tutorial-nav">
+          <div></div>
+          <!-- Empty div for flex spacing -->
+          <a href="01-introduction.html" class="nav-button">Start Tutorial →</a>
+        </div>
+      </div>
+    </div>
+
+    <script src="scripts/tutorial.js"></script>
+  </body>
+</html>
