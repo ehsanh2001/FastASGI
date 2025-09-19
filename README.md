@@ -2,6 +2,8 @@
 
 A lightweight, educational ASGI web framework built from scratch with FastAPI-inspired design. Perfect for learning how modern web frameworks work under the hood.
 
+[📝 Contributor Tutorial](docs/contributor/index.html) - Step-by-step guide for new contributors
+
 ## 🎯 Purpose
 
 **FastASGI is designed for educational purposes** - to demonstrate and teach modern web framework concepts through clean, well-documented code that's easy to understand and extend.
