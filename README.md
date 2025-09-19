@@ -2,7 +2,7 @@
 
 A lightweight, educational ASGI web framework built from scratch with FastAPI-inspired design. Perfect for learning how modern web frameworks work under the hood.
 
-[📝 Contributor Tutorial](docs/contributor/index.html) - Step-by-step guide for new contributors
+[📝 Contributor Tutorial](https://ehsanh2001.github.io/FastASGI/contributor/) - Step-by-step guide for new contributors
 
 ## 🎯 Purpose
 
