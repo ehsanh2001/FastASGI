@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ASGI Specification Essentials - FastASGI Tutorial</title>
+    <link rel="stylesheet" href="styles/tutorial.css" />
+  </head>
+  <body>
+    <div class="container">
+      <aside class="sidebar">
+        <h1>ASGI Tutorial</h1>
+
+        <h2>📚 Sections</h2>
+        <ul>
+          <li><a href="index.html">🏠 Tutorial Home</a></li>
+          <li><a href="01-introduction.html">🚀 Introduction</a></li>
+          <li>
+            <a href="02-web-frameworks-role.html">🏗️ Web Frameworks Role</a>
+          </li>
+          <li>
+            <a href="03-asgi-specification.html" class="active"
+              >📋 ASGI Specification Essentials</a
+            >
+          </li>
+          <li>
+            <a href="04-fastasgi-architecture.html">🏗️ FastASGI Architecture</a>
+          </li>
+          <li>
+            <a href="05-implementation-deep-dive.html"
+              >🔧 Implementation Deep Dive</a
+            >
+          </li>
+          <li>
+            <a href="06-practical-examples.html">💡 Practical Examples</a>
+          </li>
+          <li><a href="07-advanced-topics.html">🔍 Advanced Topics</a></li>
+        </ul>
+
+        <h2>📖 Quick Links</h2>
+        <ul>
+          <li>
+            <a href="https://asgi.readthedocs.io/">ASGI Documentation</a>
+          </li>
+          <li><a href="https://fastapi.tiangolo.com/">FastAPI</a></li>
+          <li><a href="https://www.starlette.io/">Starlette</a></li>
+          <li>
+            <a href="https://github.com/ehsanh2001/FastASGI"
+              >FastASGI Repository</a
+            >
+          </li>
+        </ul>
+      </aside>
+
+      <main class="content">
+        <h1 id="asgi-basics">📋 ASGI Specification Essentials</h1>
+
+        <div class="highlight">
+          <strong>📖 In this section:</strong> As a potential web framework contributor, 
+          you'll learn the ASGI fundamentals that drive framework design decisions. 
+          Understanding these patterns is essential for contributing to FastASGI or 
+          any Python async web framework project.
+        </div>
+
+        <h2 id="asgi-pattern">The ASGI Pattern</h2>
+
+        <p>
+          As a framework developer, understanding this signature is crucial. Every 
+          abstraction you build—routers, middleware, request objects—ultimately 
+          translates back to this pattern:
+        </p>
+
+        <div class="code-block" data-lang="python">
+          <pre><code><span class="python-keyword">async</span> <span class="python-keyword">def</span> application(scope, receive, send):
+    <span class="python-string">"""
+    The ASGI contract that your framework must satisfy.
+    
+    Args:
+        scope: Connection metadata your framework needs to parse
+        receive: Stream of messages your framework must handle
+        send: Output channel your framework controls
+    """</span>
+    <span class="python-keyword">pass</span></code></pre>
+        </div>
+
+        <p>
+          Your framework's job is to provide elegant abstractions over this interface. 
+          Think about how you'll transform raw ASGI calls into intuitive APIs for 
+          application developers.
+        </p>
+
+        <div class="info">
+          <strong>🔍 Framework Design Insight:</strong> The beauty of ASGI is its 
+          simplicity—three parameters handle every web interaction. Your framework's 
+          complexity should hide this simplicity, not expose it.
+        </div>
+
+        <h2 id="asgi-messages">ASGI Message Types Overview</h2>
+
+        <p>
+          Before diving into implementation details, you need to understand the message types 
+          that flow through ASGI applications. Every ASGI interaction is built from these 
+          fundamental message exchanges between the server and your application.
+        </p>
+
+        <p>
+          <strong>Important:</strong> These messages are what your application will receive when 
+          calling the <code>receive</code> function that's passed to your ASGI callable. Each 
+          message is a Python dictionary containing a <code>type</code> field that identifies 
+          the message type, plus additional fields specific to that message type.
+        </p>
+
+        <h3>�📤 HTTP Messages</h3>
+        <p>
+          <strong>http.request</strong> messages are sent by the server to your application when a client makes an HTTP request. Each message contains a chunk of the request body (which might be empty for GET requests). The <code>more_body</code> field tells you whether more chunks are coming - this is crucial for handling large uploads or streaming data.
+        </p>
+        <p>
+          <strong>http.response.start</strong> and <strong>http.response.body</strong> messages are sent by your application back to the server. You must send exactly one response.start message containing the HTTP status code and headers, followed by one or more response.body messages containing the actual response content. The final body message must have <code>more_body</code> set to False to signal the end of the response.
+        </p>
+
+        <h3>🔄 Lifespan Messages</h3>
+        <p>
+          <strong>lifespan.startup</strong> messages are sent when the server is starting up, before it begins accepting HTTP requests. This is your opportunity to initialize databases, load configuration, start background tasks, or set up any resources your application needs. You must respond with either <code>lifespan.startup.complete</code> (success) or <code>lifespan.startup.failed</code> (with an error message).
+        </p>
+        <p>
+          <strong>lifespan.shutdown</strong> messages are sent when the server is gracefully shutting down. This is when you should close database connections, stop background tasks, clean up temporary files, and release any resources. Respond with <code>lifespan.shutdown.complete</code> when cleanup is finished, or <code>lifespan.shutdown.failed</code> if something goes wrong during cleanup.
+        </p>
+
+        <h3>🌐 WebSocket Messages (Reference)</h3>
+        <p>
+          <strong>websocket.connect</strong> messages indicate a client wants to establish a WebSocket connection. Your application can respond with <code>websocket.accept</code> to allow the connection or <code>websocket.close</code> to reject it. Once accepted, the connection enters a bidirectional communication phase.
+        </p>
+        <p>
+          <strong>websocket.receive</strong> and <strong>websocket.send</strong> messages handle the ongoing communication. Receive messages contain data sent by the client (either text or binary), while send messages let you transmit data back to the client. The connection continues until either side sends a disconnect message or encounters an error.
+        </p>
+
+        <div class="info">
+          <strong>💡 Framework Implementation Key:</strong> Your framework must handle these 
+          message patterns correctly for each protocol. HTTP requires precise request/response 
+          sequencing, Lifespan needs startup/shutdown coordination, and WebSocket demands 
+          stateful connection management.
+        </div>
+
+        <div class="transition-note">
+          <p><strong>🔄 Implementation Details:</strong> Now that you understand what messages flow through ASGI, let's examine the three core parameters that make this communication possible.</p>
+        </div>
+
+        <h2 id="scope-receive-send">Understanding Scope, Receive, Send</h2>
+
+        <h3 id="scope-dictionary">The Scope Dictionary</h3>
+        <p>
+          As a framework contributor, you need to understand scope structure intimately. 
+          This is the raw data your framework must parse to create request objects:
+        </p>
+
+        <div class="code-block" data-lang="python">
+          <pre><code><span class="python-comment"># HTTP request scope - framework parsing reference</span>
+scope = {
+    <span class="python-string">'type'</span>: <span class="python-string">'http'</span>,                    <span class="python-comment"># Protocol type for routing logic</span>
+    <span class="python-string">'asgi'</span>: {
+        <span class="python-string">'version'</span>: <span class="python-string">'3.0'</span>,              <span class="python-comment"># ASGI version compatibility</span>
+        <span class="python-string">'spec_version'</span>: <span class="python-string">'2.4'</span>          <span class="python-comment"># HTTP spec version</span>
+    },
+    <span class="python-string">'http_version'</span>: <span class="python-string">'1.1'</span>,             <span class="python-comment"># HTTP version for response format</span>
+    <span class="python-string">'method'</span>: <span class="python-string">'GET'</span>,                   <span class="python-comment"># HTTP method for handler routing</span>
+    <span class="python-string">'scheme'</span>: <span class="python-string">'http'</span>,                  <span class="python-comment"># URL scheme for redirect logic</span>
+    <span class="python-string">'path'</span>: <span class="python-string">'/users/123'</span>,              <span class="python-comment"># Request path for URL routing</span>
+    <span class="python-string">'query_string'</span>: <span class="python-string">b'include=profile'</span>, <span class="python-comment"># Query parameters (decode to dict)</span>
+    <span class="python-string">'root_path'</span>: <span class="python-string">''</span>,                   <span class="python-comment"># Application mount point</span>
+    <span class="python-string">'headers'</span>: [                       <span class="python-comment"># HTTP headers (convert to case-insensitive dict)</span>
+        (<span class="python-string">b'host'</span>, <span class="python-string">b'localhost:8000'</span>),
+        (<span class="python-string">b'user-agent'</span>, <span class="python-string">b'Mozilla/5.0'</span>),
+        (<span class="python-string">b'accept'</span>, <span class="python-string">b'application/json'</span>),
+    ],
+    <span class="python-string">'server'</span>: (<span class="python-string">'127.0.0.1'</span>, <span class="python-number">8000</span>),     <span class="python-comment"># Server address</span>
+    <span class="python-string">'client'</span>: (<span class="python-string">'127.0.0.1'</span>, <span class="python-number">54321</span>),    <span class="python-comment"># Client address</span>
+}</code></pre>
+        </div>
+
+        <table class="spec-table">
+          <thead>
+            <tr>
+              <th>Key</th>
+              <th>Type</th>
+              <th>Description</th>
+              <th>Required</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>type</code></td>
+              <td>str</td>
+              <td>Protocol type: "http", "websocket", or "lifespan"</td>
+              <td>✅</td>
+            </tr>
+            <tr>
+              <td><code>method</code></td>
+              <td>str</td>
+              <td>HTTP method (GET, POST, etc.)</td>
+              <td>HTTP only</td>
+            </tr>
+            <tr>
+              <td><code>path</code></td>
+              <td>str</td>
+              <td>URL path, decoded from percent-encoding</td>
+              <td>HTTP/WS</td>
+            </tr>
+            <tr>
+              <td><code>query_string</code></td>
+              <td>bytes</td>
+              <td>Query string portion, percent-encoded</td>
+              <td>HTTP/WS</td>
+            </tr>
+            <tr>
+              <td><code>headers</code></td>
+              <td>List[Tuple[bytes, bytes]]</td>
+              <td>HTTP headers as name-value pairs</td>
+              <td>HTTP/WS</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3 id="receive-callable">The Receive Callable</h3>
+        <p>
+          Receive is an async function that yields messages from the client.
+          Each protocol has different message types:
+        </p>
+
+        <div class="code-block" data-lang="python">
+          <pre>
+<span class="python-keyword">async</span> <span class="python-keyword">def</span> example_receive_usage(receive):
+    <span class="python-string">"""Example of using the receive callable."""</span>
+    message = <span class="python-keyword">await</span> receive()
+    
+    <span class="python-comment"># HTTP request message</span>
+    <span class="python-keyword">if</span> message[<span class="python-string">'type'</span>] == <span class="python-string">'http.request'</span>:
+        body_chunk = message[<span class="python-string">'body'</span>]        <span class="python-comment"># bytes</span>
+        more_coming = message[<span class="python-string">'more_body'</span>]  <span class="python-comment"># bool</span>
+        
+    <span class="python-comment"># WebSocket message</span>  
+    <span class="python-keyword">elif</span> message[<span class="python-string">'type'</span>] == <span class="python-string">'websocket.receive'</span>:
+        text_data = message.get(<span class="python-string">'text'</span>)     <span class="python-comment"># str or None</span>
+        byte_data = message.get(<span class="python-string">'bytes'</span>)    <span class="python-comment"># bytes or None</span>
+        
+    <span class="python-comment"># Lifespan events</span>
+    <span class="python-keyword">elif</span> message[<span class="python-string">'type'</span>] == <span class="python-string">'lifespan.startup'</span>:
+        <span class="python-comment"># Server is starting up</span>
+        <span class="python-keyword">pass</span>
+    <span class="python-keyword">elif</span> message[<span class="python-string">'type'</span>] == <span class="python-string">'lifespan.shutdown'</span>:
+        <span class="python-comment"># Server is shutting down</span>
+        <span class="python-keyword">pass</span>
+</pre>
+        </div>
+
+        <h3 id="send-callable">The Send Callable</h3>
+        <p>
+          Send is an async function for sending messages to the client. You must
+          send the right message types for each protocol:
+        </p>
+
+        <div class="code-block" data-lang="python">
+          <pre>
+<span class="python-keyword">async</span> <span class="python-keyword">def</span> example_send_usage(send):
+    <span class="python-string">"""Example of using the send callable."""</span>
+    
+    <span class="python-comment"># HTTP response (requires two messages)</span>
+    <span class="python-keyword">await</span> send({
+        <span class="python-string">'type'</span>: <span class="python-string">'http.response.start'</span>,
+        <span class="python-string">'status'</span>: <span class="python-number">200</span>,
+        <span class="python-string">'headers'</span>: [(<span class="python-string">b'content-type'</span>, <span class="python-string">b'application/json'</span>)],
+    })
+    <span class="python-keyword">await</span> send({
+        <span class="python-string">'type'</span>: <span class="python-string">'http.response.body'</span>,
+        <span class="python-string">'body'</span>: <span class="python-string">b'{"message": "Hello, World!"}'</span>,
+        <span class="python-string">'more_body'</span>: <span class="python-builtin">False</span>,  <span class="python-comment"># False = end of response</span>
+    })
+    
+    <span class="python-comment"># WebSocket messages</span>
+    <span class="python-keyword">await</span> send({
+        <span class="python-string">'type'</span>: <span class="python-string">'websocket.accept'</span>,
+    })
+    <span class="python-keyword">await</span> send({
+        <span class="python-string">'type'</span>: <span class="python-string">'websocket.send'</span>,
+        <span class="python-string">'text'</span>: <span class="python-string">'Hello from server!'</span>,
+    })
+    
+    <span class="python-comment"># Lifespan responses</span>
+    <span class="python-keyword">await</span> send({
+        <span class="python-string">'type'</span>: <span class="python-string">'lifespan.startup.complete'</span>,
+    })
+</pre>
+        </div>
+
+        <div class="transition-note">
+          <p><strong>🔄 From Theory to Practice:</strong> Now that you understand the ASGI interface structure, let's explore how each protocol type works in practice. We'll start with HTTP—the foundation of web frameworks.</p>
+        </div>
+
+        <h2 id="http-protocol">HTTP Protocol Essentials</h2>
+
+        <p>
+          HTTP is the most common ASGI protocol. Here's how the basic request/response 
+          flow works:
+        </p>
+
+        <div class="flow-diagram">
+          <h4>HTTP Request Lifecycle</h4>
+          <div class="step-box">1. Connection Scope</div>
+          <span class="arrow">→</span>
+          <div class="step-box">2. http.request</div>
+          <span class="arrow">→</span>
+          <div class="step-box">3. http.response.start</div>
+          <span class="arrow">→</span>
+          <div class="step-box">4. http.response.body</div>
+        </div>
+
+        <h3>Simple HTTP Example</h3>
+        <p>Here's a complete "Hello World" HTTP handler to show the pattern:</p>
+
+        <div class="code-block" data-lang="python">
+          <pre>
+<span class="python-keyword">async</span> <span class="python-keyword">def</span> simple_http_app(scope, receive, send):
+    <span class="python-string">"""
+    Complete HTTP handler demonstrating ASGI fundamentals.
+    
+    This example shows the minimal HTTP implementation pattern that your
+    framework will abstract away for application developers.
+    """</span>
+    <span class="python-keyword">assert</span> scope[<span class="python-string">'type'</span>] == <span class="python-string">'http'</span>
+    
+    <span class="python-comment"># Framework responsibility: Read and parse request body</span>
+    message = <span class="python-keyword">await</span> receive()
+    <span class="python-keyword">assert</span> message[<span class="python-string">'type'</span>] == <span class="python-string">'http.request'</span>
+    
+    <span class="python-comment"># Framework responsibility: Extract routing information from scope</span>
+    method = scope[<span class="python-string">'method'</span>]
+    path = scope[<span class="python-string">'path'</span>]
+    
+    <span class="python-comment"># Framework responsibility: Construct and send response headers</span>
+    <span class="python-keyword">await</span> send({
+        <span class="python-string">'type'</span>: <span class="python-string">'http.response.start'</span>,
+        <span class="python-string">'status'</span>: <span class="python-number">200</span>,
+        <span class="python-string">'headers'</span>: [(<span class="python-string">b'content-type'</span>, <span class="python-string">b'text/plain'</span>)],
+    })
+    
+    <span class="python-comment"># Framework responsibility: Format and send response body</span>
+    response_text = <span class="python-string">f"Hello! You sent </span>{method}<span class="python-string"> </span>{path}<span class="python-string">"</span>
+    <span class="python-keyword">await</span> send({
+        <span class="python-string">'type'</span>: <span class="python-string">'http.response.body'</span>,
+        <span class="python-string">'body'</span>: response_text.encode(),
+        <span class="python-string">'more_body'</span>: <span class="python-builtin">False</span>,  <span class="python-comment"># End of response</span>
+    })
+</pre>
+        </div>
+
+        <div class="info">
+          <strong>💡 Framework Implementation Notes:</strong> Notice how much code is needed 
+          for a simple "Hello World"! Your framework must handle message types, encode text 
+          to bytes, set headers manually, and manage the response lifecycle. This complexity 
+          is exactly what your abstractions should hide from application developers.
+        </div>
+
+        <h2 id="lifespan-protocol">Lifespan Protocol Essentials</h2>
+
+        <p>
+          As a framework developer, lifespan protocol is where you'll implement application 
+          lifecycle hooks. This is crucial for managing shared resources:
+        </p>
+
+        <div class="code-block" data-lang="python">
+          <pre>
+<span class="python-keyword">async</span> <span class="python-keyword">def</span> lifespan_handler(scope, receive, send):
+    <span class="python-string">"""
+    Basic lifespan pattern for framework contributors.
+    
+    This demonstrates the essential protocol flow - your framework
+    will build more sophisticated resource management on top of this.
+    """</span>
+    <span class="python-keyword">assert</span> scope[<span class="python-string">'type'</span>] == <span class="python-string">'lifespan'</span>
+    
+    <span class="python-keyword">while</span> <span class="python-builtin">True</span>:
+        message = <span class="python-keyword">await</span> receive()
+        
+        <span class="python-keyword">if</span> message[<span class="python-string">'type'</span>] == <span class="python-string">'lifespan.startup'</span>:
+            <span class="python-comment"># Initialize your app (database, cache, etc.)</span>
+            <span class="python-builtin">print</span>(<span class="python-string">"App starting up..."</span>)
+            <span class="python-keyword">await</span> send({<span class="python-string">'type'</span>: <span class="python-string">'lifespan.startup.complete'</span>})
+                
+        <span class="python-keyword">elif</span> message[<span class="python-string">'type'</span>] == <span class="python-string">'lifespan.shutdown'</span>:
+            <span class="python-comment"># Cleanup resources</span>
+            <span class="python-builtin">print</span>(<span class="python-string">"App shutting down..."</span>)
+            <span class="python-keyword">await</span> send({<span class="python-string">'type'</span>: <span class="python-string">'lifespan.shutdown.complete'</span>})
+            <span class="python-keyword">return</span>  <span class="python-comment"># Exit handler</span>
+</pre>
+        </div>
+
+        <div class="transition-note">
+          <p><strong>🔄 Protocol Transition:</strong> Now that we've covered HTTP and Lifespan protocols, let's briefly touch on WebSocket protocol for completeness.</p>
+        </div>
+
+        <h2 id="websocket-protocol">WebSocket Protocol Essentials</h2>
+
+        <p>
+          WebSockets enable bidirectional real-time communication through a different ASGI protocol. 
+          While understanding WebSocket protocol is valuable for framework contributors, FastASGI 
+          currently focuses on HTTP and Lifespan protocols.
+        </p>
+
+        <div class="flow-diagram">
+          <h4>WebSocket Lifecycle (Reference)</h4>
+          <div class="step-box">1. websocket.connect</div>
+          <span class="arrow">→</span>
+          <div class="step-box">2. websocket.accept</div>
+          <span class="arrow bidirectional">↔</span>
+          <div class="step-box">3. websocket.receive/send</div>
+          <span class="arrow">→</span>
+          <div class="step-box">4. websocket.disconnect</div>
+        </div>
+
+        <div class="info">
+          <strong>📋 FastASGI Scope Note:</strong> WebSocket support is not currently implemented 
+          in FastASGI. The framework focuses on HTTP request/response patterns and application 
+          lifecycle management. For WebSocket functionality, consider frameworks like FastAPI, 
+          Starlette, or Django Channels.
+        </div>
+
+        <div class="info">
+          <strong>💡 Contributor Opportunity:</strong> Adding WebSocket support could be an 
+          excellent contribution to FastASGI! The protocol follows similar patterns to HTTP 
+          but requires connection state management and bidirectional message handling.
+        </div>
+
+        <div class="transition-note">
+          <p><strong>🔄 Moving to Framework Design:</strong> Now that you understand the core ASGI protocols, let's explore the fundamental challenges frameworks solve and why they exist.</p>
+        </div>
+
+        <h2 id="why-frameworks-exist">Framework Design Challenges</h2>
+
+        <p>
+          As a framework contributor, you need to understand the complexity that raw ASGI 
+          presents to application developers. Consider the challenges your framework must solve:
+        </p>
+
+        <ul class="feature-list">
+          <li><strong>Routing:</strong> How will you map URLs to handler functions efficiently?</li>
+          <li><strong>Request abstraction:</strong> How do you parse JSON, forms, file uploads elegantly?</li>
+          <li><strong>Response helpers:</strong> What APIs make templates, redirects, errors intuitive?</li>
+          <li><strong>Middleware design:</strong> How do you compose cross-cutting concerns?</li>
+          <li><strong>Error handling:</strong> How do you provide useful debugging information?</li>
+          <li><strong>Testing utilities:</strong> What tools help developers test their applications?</li>
+        </ul>
+
+        <div class="comparison-example">
+          <h4>Design Challenge: Raw ASGI vs Your Framework</h4>
+          
+          <div class="code-comparison">
+            <div class="code-side">
+              <h5>What Developers Face (Raw ASGI)</h5>
+              <pre><code><span class="python-keyword">async</span> <span class="python-keyword">def</span> app(scope, receive, send):
+    <span class="python-keyword">if</span> scope[<span class="python-string">'type'</span>] != <span class="python-string">'http'</span>:
+        <span class="python-keyword">return</span>
+    
+    <span class="python-keyword">if</span> scope[<span class="python-string">'path'</span>] == <span class="python-string">'/users'</span>:
+        <span class="python-keyword">await</span> send({
+            <span class="python-string">'type'</span>: <span class="python-string">'http.response.start'</span>,
+            <span class="python-string">'status'</span>: <span class="python-number">200</span>,
+            <span class="python-string">'headers'</span>: [(<span class="python-string">b'content-type'</span>, <span class="python-string">b'application/json'</span>)]
+        })
+        <span class="python-keyword">await</span> send({
+            <span class="python-string">'type'</span>: <span class="python-string">'http.response.body'</span>,
+            <span class="python-string">'body'</span>: <span class="python-string">b'{"users": []}'</span>,
+            <span class="python-string">'more_body'</span>: <span class="python-builtin">False</span>
+        })
+    <span class="python-keyword">else</span>:
+        <span class="python-comment"># Handle 404...</span></code></pre>
+            </div>
+            
+            <div class="code-side">
+              <h5>What Your Framework Should Enable</h5>
+              <pre><code><span class="python-decorator">@app.get</span>(<span class="python-string">'/users'</span>)
+<span class="python-keyword">async</span> <span class="python-keyword">def</span> get_users():
+    <span class="python-keyword">return</span> {<span class="python-string">"users"</span>: []}</code></pre>
+            </div>
+          </div>
+        </div>
+
+        <div class="info">
+          <strong>🎯 Framework Design Principle:</strong> Your API surface should be 
+          inversely proportional to the complexity you handle internally. The more 
+          ASGI complexity you abstract away, the cleaner your user-facing APIs become.
+        </div>
+
+        <div class="transition-note">
+          <p><strong>🔄 Architecture Deep Dive:</strong> Beyond basic request handling, frameworks need robust patterns for cross-cutting concerns. Let's explore middleware—the backbone of extensible framework architecture.</p>
+        </div>
+
+        <h2 id="middleware-concept">Middleware Architecture Patterns</h2>
+
+        <p>
+          Understanding middleware is crucial for framework architecture. The "onion" pattern 
+          is how you'll implement cross-cutting concerns in your framework:
+        </p>
+
+        <div class="code-block" data-lang="python">
+          <pre>
+<span class="python-keyword">class</span> FrameworkMiddleware:
+    <span class="python-string">"""
+    Framework middleware pattern for cross-cutting concerns.
+    
+    This template shows how to implement the "onion" middleware pattern
+    that wraps around your application core, enabling composable features
+    like authentication, CORS, logging, and error handling.
+    """</span>
+    
+    <span class="python-keyword">def</span> __init__(<span class="python-builtin">self</span>, app):
+        <span class="python-builtin">self</span>.app = app  <span class="python-comment"># Next layer in the middleware stack</span>
+    
+    <span class="python-keyword">async</span> <span class="python-keyword">def</span> __call__(<span class="python-builtin">self</span>, scope, receive, send):
+        <span class="python-comment"># Framework responsibility: Pre-process requests (auth, validation, etc.)</span>
+        <span class="python-builtin">print</span>(<span class="python-string">f"Processing request to </span>{scope[<span class="python-string">'path'</span>]}<span class="python-string">"</span>)
+        
+        <span class="python-comment"># Framework responsibility: Chain to next middleware or application</span>
+        <span class="python-keyword">await</span> <span class="python-builtin">self</span>.app(scope, receive, send)
+        
+        <span class="python-comment"># Post-processing: logging, cleanup (limited in ASGI)</span>
+        <span class="python-builtin">print</span>(<span class="python-string">"Request completed"</span>)
+
+<span class="python-comment"># Framework responsibility: Make middleware composition intuitive</span>
+app = FrameworkMiddleware(your_application)
+</pre>
+        </div>
+
+        <div class="info">
+          <strong>🏗️ Architecture Insight:</strong> Middleware composition is where your 
+          framework's API design really matters. How will developers add middleware? 
+          Decorators? Method calls? Configuration? The pattern you choose affects 
+          the entire developer experience.
+        </div>
+
+        <div class="transition-note">
+          <p><strong>🔄 FastASGI Focus:</strong> With ASGI fundamentals and framework patterns understood, let's explore how FastASGI specifically approaches these challenges and where you can contribute.</p>
+        </div>
+
+        <h2 id="fastasgi-approach">FastASGI's Contributor Philosophy</h2>
+
+        <p>
+          As a potential FastASGI contributor, understanding our architectural philosophy 
+          will guide your contributions. FastASGI takes a unique approach to framework design:
+        </p>
+
+        <ul class="feature-list">
+          <li><strong>Educational transparency:</strong> Code should teach ASGI concepts, not hide them</li>
+          <li><strong>Modular architecture:</strong> Contributors can work on isolated components</li>
+          <li><strong>Clear abstractions:</strong> Each layer has a well-defined responsibility</li>
+          <li><strong>Debugging-first design:</strong> Error messages guide developers to solutions</li>
+          <li><strong>Performance awareness:</strong> Optimizations that don't sacrifice clarity</li>
+        </ul>
+
+        <div class="info">
+          <strong>🎯 Contribution Opportunities:</strong> Understanding these ASGI patterns 
+          helps you identify where FastASGI can be improved—routing performance, middleware 
+          composition, request parsing, error handling, or testing utilities.
+        </div>
+
+        <div class="highlight">
+          <strong>🎯 Next Up:</strong> Now that you understand ASGI fundamentals and 
+          framework design challenges, you'll dive into FastASGI's specific architecture 
+          and see how these concepts are implemented in practice.
+        </div>
+        <h2>🎯 Key Takeaways for Contributors</h2>
+
+        <p>As a potential framework contributor, you now understand:</p>
+
+        <ul class="feature-list">
+          <li>
+            <strong>ASGI Contract:</strong> async def app(scope, receive, send) - 
+            the interface your framework must implement perfectly
+          </li>
+          <li>
+            <strong>Message Flow Patterns:</strong> How HTTP, Lifespan, and WebSocket messages 
+            flow between server and application, and when each message type is used
+          </li>
+          <li>
+            <strong>Scope Parsing:</strong> How to extract and validate connection metadata 
+            for your request objects
+          </li>
+          <li>
+            <strong>Protocol Handling:</strong> The essential patterns for HTTP and 
+            Lifespan protocols that FastASGI implements (WebSocket awareness for future contributions)
+          </li>
+          <li>
+            <strong>Abstraction Challenges:</strong> The complexity your framework must 
+            hide to provide clean developer APIs
+          </li>
+          <li>
+            <strong>Middleware Architecture:</strong> How to design composable, 
+            performance-aware middleware systems
+          </li>
+        </ul>
+
+        <div class="highlight">
+          <strong>🎯 Next Up:</strong> Now that you understand ASGI fundamentals and 
+          framework design challenges, you'll dive into FastASGI's specific architecture 
+          and see exactly how these concepts are implemented, where you can contribute, 
+          and how to extend the framework.
+        </div>
+
+        <div class="tutorial-nav">
+          <a href="02-web-frameworks-role.html" class="nav-button previous"
+            >← Web Frameworks Role</a
+          >
+          <a href="04-fastasgi-architecture.html" class="nav-button next"
+            >FastASGI Architecture →</a
+          >
+        </div>
+      </main>
+
+      <nav class="right-sidebar">
+        <h3>📖 In This Section</h3>
+        <ul>
+          <li><a href="#asgi-pattern">The ASGI Pattern</a></li>
+          <li><a href="#asgi-messages">ASGI Message Types Overview</a></li>
+          <li><a href="#scope-receive-send">Scope, Receive, Send</a></li>
+          <li><a href="#http-protocol">HTTP Protocol Essentials</a></li>
+          <li><a href="#lifespan-protocol">Lifespan Protocol Essentials</a></li>
+          <li><a href="#websocket-protocol">WebSocket Protocol Essentials</a></li>
+          <li><a href="#why-frameworks-exist">Framework Design Challenges</a></li>
+          <li><a href="#middleware-concept">Middleware Architecture Patterns</a></li>
+          <li><a href="#fastasgi-approach">FastASGI's Contributor Philosophy</a></li>
+        </ul>
+      </nav>
+      </nav>
+    </div>
+
+    <script src="scripts/tutorial.js"></script>
+  </body>
+</html>
