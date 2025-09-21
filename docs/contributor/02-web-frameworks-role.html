@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Web Frameworks Role - FastASGI Tutorial</title>
+    <link rel="stylesheet" href="styles/tutorial.css" />
+  </head>
+  <body>
+    <div class="container">
+      <aside class="sidebar">
+        <h1>ASGI Tutorial</h1>
+
+        <h2>📚 Sections</h2>
+        <ul>
+          <li><a href="index.html">🏠 Tutorial Home</a></li>
+          <li><a href="01-introduction.html">🚀 Introduction</a></li>
+          <li>
+            <a href="02-web-frameworks-role.html" class="active"
+              >🏗️ Web Frameworks Role</a
+            >
+          </li>
+          <li>
+            <a href="03-asgi-specification.html">📋 ASGI Specification</a>
+          </li>
+          <li>
+            <a href="04-fastasgi-architecture.html">🏗️ FastASGI Architecture</a>
+          </li>
+          <li>
+            <a href="05-implementation-deep-dive.html"
+              >🔧 Implementation Deep Dive</a
+            >
+          </li>
+          <li>
+            <a href="06-practical-examples.html">💡 Practical Examples</a>
+          </li>
+          <li><a href="07-advanced-topics.html">🔍 Advanced Topics</a></li>
+        </ul>
+
+        <h2>📖 Quick Links</h2>
+        <ul>
+          <li><a href="https://asgi.readthedocs.io/">ASGI Documentation</a></li>
+          <li><a href="https://fastapi.tiangolo.com/">FastAPI</a></li>
+          <li><a href="https://www.starlette.io/">Starlette</a></li>
+          <li>
+            <a href="https://github.com/ehsanh2001/FastASGI"
+              >FastASGI Repository</a
+            >
+          </li>
+        </ul>
+      </aside>
+
+      <main class="content">
+        <h1>🏗️ Web Frameworks Role?</h1>
+
+        <div class="highlight">
+          <strong>📖 In this section:</strong> Learn how ASGI frameworks
+          simplify development by handling the complex, repetitive parts of web
+          applications. We'll compare raw ASGI code with framework-assisted
+          development and explore the specific benefits frameworks provide.
+        </div>
+
+        <p>
+          While you <em>can</em> write raw ASGI applications (like our "Hello
+          World" example from the introduction), ASGI web frameworks make
+          development much easier by handling the complex, repetitive parts for
+          you. Here's what frameworks like FastAPI, Starlette, and FastASGI
+          provide:
+        </p>
+
+        <h2 id="request-response-handling">🔄 Request/Response Handling</h2>
+        <p>
+          Frameworks parse the raw ASGI messages and give you convenient
+          request/response objects:
+        </p>
+
+        <h3>😰 Raw ASGI (the manual way):</h3>
+        <div class="code-block" data-lang="python">
+          <pre>
+<span class="python-keyword">async</span> <span class="python-keyword">def</span> raw_asgi_app(scope, receive, send):
+    <span class="python-keyword">if</span> scope[<span class="python-string">'type'</span>] == <span class="python-string">'http'</span>:
+        <span class="python-comment"># Parse headers manually</span>
+        headers = {name.decode(): value.decode() <span class="python-keyword">for</span> name, value <span class="python-keyword">in</span> scope[<span class="python-string">'headers'</span>]}
+        
+        <span class="python-comment"># Read body manually</span>
+        body = <span class="python-string">b''</span>
+        <span class="python-keyword">while</span> <span class="python-builtin">True</span>:
+            message = <span class="python-keyword">await</span> receive()
+            <span class="python-keyword">if</span> message[<span class="python-string">'type'</span>] == <span class="python-string">'http.request'</span>:
+                body += message.get(<span class="python-string">'body'</span>, <span class="python-string">b''</span>)
+                <span class="python-keyword">if</span> <span class="python-keyword">not</span> message.get(<span class="python-string">'more_body'</span>):
+                    <span class="python-keyword">break</span>
+        
+        <span class="python-comment"># Process request manually (parsing URL, query params, etc.)</span>
+        path = scope[<span class="python-string">'path'</span>]
+        method = scope[<span class="python-string">'method'</span>]
+        
+        <span class="python-comment"># Create response manually</span>
+        response_body = <span class="python-string">f"Hello! Path: {path}, Method: {method}"</span>.encode()
+        
+        <span class="python-comment"># Send response start manually</span>
+        <span class="python-keyword">await</span> send({
+            <span class="python-string">'type'</span>: <span class="python-string">'http.response.start'</span>,
+            <span class="python-string">'status'</span>: <span class="python-number">200</span>,
+            <span class="python-string">'headers'</span>: [
+                (<span class="python-string">b'content-type'</span>, <span class="python-string">b'text/plain'</span>),
+                (<span class="python-string">b'content-length'</span>, <span class="python-builtin">str</span>(<span class="python-builtin">len</span>(response_body)).encode()),
+            ],
+        })
+        
+        <span class="python-comment"># Send response body manually</span>
+        <span class="python-keyword">await</span> send({
+            <span class="python-string">'type'</span>: <span class="python-string">'http.response.body'</span>,
+            <span class="python-string">'body'</span>: response_body,
+        })
+</pre>
+        </div>
+
+        <h3>😌 With a Framework (the easy way):</h3>
+        <div class="code-block" data-lang="python">
+          <pre>
+<span class="python-keyword">async</span> <span class="python-keyword">def</span> framework_handler(request):
+    <span class="python-comment"># Everything is parsed and ready to use!</span>
+    headers = request.headers        <span class="python-comment"># Already parsed!</span>
+    body = <span class="python-keyword">await</span> request.body()        <span class="python-comment"># Simple method call!</span>
+    path = request.url.path          <span class="python-comment"># Easy access!</span>
+    method = request.method          <span class="python-comment"># No scope digging!</span>
+    
+    <span class="python-comment"># Simple response creation!</span>
+    <span class="python-keyword">return</span> Response(<span class="python-string">f"Hello! Path: {path}, Method: {method}"</span>)
+</pre>
+        </div>
+
+        <div class="warning">
+          <strong>⚠️ The Difference:</strong> Raw ASGI requires 30+ lines of
+          boilerplate code for basic request/response handling. Frameworks
+          reduce this to 6 lines of actual business logic. Imagine doing this
+          for every endpoint in your application!
+        </div>
+
+        <h3>💸 Cost of Staying Raw</h3>
+        <ul>
+          <li>
+            <strong>Boilerplate:</strong> Every endpoint requires 20+ lines of
+            parsing code before you can handle business logic
+          </li>
+          <li>
+            <strong>Error Surface:</strong> Manual message handling means more
+            opportunities for bugs, edge cases, and security vulnerabilities
+          </li>
+          <li>
+            <strong>Maintainability:</strong> Repetitive low-level code makes
+            your application harder to read, test, and refactor
+          </li>
+        </ul>
+
+        <h2 id="routing-patterns">🗺️ Routing & URL Patterns</h2>
+        <p>
+          Frameworks handle URL routing and parameter extraction automatically:
+        </p>
+
+        <div class="code-block" data-lang="python">
+          <pre>
+<span class="python-comment"># Framework handles routing for you</span>
+@app.get(<span class="python-string">"/users/{user_id}"</span>)
+<span class="python-keyword">async</span> <span class="python-keyword">def</span> get_user(request):
+    user_id = request.path_params[<span class="python-string">'user_id'</span>]  <span class="python-comment"># Automatically extracted!</span>
+    <span class="python-keyword">return</span> Response(<span class="python-string">f"User: {user_id}"</span>)
+
+@app.get(<span class="python-string">"/search"</span>)
+<span class="python-keyword">async</span> <span class="python-keyword">def</span> search(request):
+    query = request.query_params[<span class="python-string">'q'</span>]  <span class="python-comment"># Easy query string access!</span>
+    <span class="python-keyword">return</span> Response(<span class="python-string">f"Searching for: {query}"</span>)
+</pre>
+        </div>
+
+        <h2 id="file-uploads">📁 File Uploads & Form Data</h2>
+        <p>
+          Frameworks handle complex multipart form parsing and file uploads:
+        </p>
+
+        <div class="code-block" data-lang="python">
+          <pre>
+<span class="python-comment"># Framework handles file uploads automatically</span>
+<span class="python-keyword">async</span> <span class="python-keyword">def</span> upload_file(request):
+    form = <span class="python-keyword">await</span> request.form()
+    file = form[<span class="python-string">'upload'</span>]  <span class="python-comment"># Easy file access!</span>
+    
+    content = <span class="python-keyword">await</span> file.read()
+    filename = file.filename
+    
+    <span class="python-keyword">return</span> Response(<span class="python-string">f"Uploaded: {filename}"</span>)
+</pre>
+        </div>
+
+        <h2 id="middleware-extensions">🔌 Middleware & Extensions</h2>
+        <p>Frameworks provide middleware systems for cross-cutting concerns:</p>
+
+        <div class="info-box">
+          <h4>🎯 ASGI vs Framework Middleware</h4>
+          <p>
+            <strong>Important clarification:</strong> The ASGI specification
+            provides minimal guidance on middleware implementation - it mainly
+            describes the callable interface. Each framework develops its own
+            middleware patterns and conventions. When we talk about "middleware
+            patterns," we're referring to framework-specific approaches, not
+            ASGI-mandated standards.
+          </p>
+        </div>
+
+        <table class="spec-table">
+          <caption>
+            Framework Features and Benefits
+          </caption>
+          <thead>
+            <tr>
+              <th>Feature</th>
+              <th>What Framework Handles</th>
+              <th>Benefit</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>CORS</strong></td>
+              <td>Cross-origin headers automatically</td>
+              <td>No manual header management</td>
+            </tr>
+            <tr>
+              <td><strong>Authentication</strong></td>
+              <td>JWT tokens, sessions, OAuth flows</td>
+              <td>Security best practices built-in</td>
+            </tr>
+            <tr>
+              <td><strong>Rate Limiting</strong></td>
+              <td>Request throttling and quotas</td>
+              <td>Automatic abuse protection</td>
+            </tr>
+            <tr>
+              <td><strong>Compression</strong></td>
+              <td>Gzip/Brotli response compression</td>
+              <td>Better performance automatically</td>
+            </tr>
+            <tr>
+              <td><strong>Logging</strong></td>
+              <td>Request/response logging</td>
+              <td>Debugging and monitoring</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="info">
+          <strong>🎯 Framework Value:</strong> Frameworks handle the "plumbing"
+          so you can focus on your application logic. Instead of parsing HTTP
+          messages and managing ASGI protocol details, you write simple
+          functions that receive requests and return responses.
+        </div>
+
+        <h2 id="about-fastasgi">About FastASGI</h2>
+
+        <p>
+          FastASGI is an educational ASGI framework designed to demonstrate core
+          ASGI concepts with clean, readable code. Unlike production frameworks
+          like FastAPI or Starlette, FastASGI prioritizes:
+        </p>
+
+        <ul class="feature-list">
+          <li>
+            <strong>Educational Value:</strong> Code clarity over performance
+            optimization
+          </li>
+          <li>
+            <strong>ASGI Compliance:</strong> Full adherence to ASGI 3.0
+            specification
+          </li>
+          <li>
+            <strong>Type Safety:</strong> Extensive type hints for better
+            understanding
+          </li>
+          <li>
+            <strong>Minimal Dependencies:</strong> Only essential external
+            packages
+          </li>
+          <li>
+            <strong>Thorough Documentation:</strong> Detailed explanations of
+            every component
+          </li>
+        </ul>
+
+        <div class="warning">
+          <strong>⚠️ Educational Purpose:</strong> FastASGI is designed for
+          learning. For production applications, consider mature frameworks like
+          FastAPI, Starlette, or Quart which offer more features, optimizations,
+          and ecosystem support.
+        </div>
+
+        <h3>FastASGI Features</h3>
+
+        <div class="implementation-section">
+          <h4>Core Components</h4>
+          <ul>
+            <li>
+              <strong>FastASGI Application Class:</strong> Main ASGI app
+              implementing the specification
+            </li>
+            <li>
+              <strong>Request Object:</strong> Convenient access to request data
+              with async body loading
+            </li>
+            <li>
+              <strong>Response Object:</strong> Type-safe response building with
+              automatic content detection
+            </li>
+            <li>
+              <strong>APIRouter:</strong> Advanced routing with path parameters
+              and method matching
+            </li>
+            <li>
+              <strong>MiddlewareChain:</strong> Composable middleware system
+              using callable wrapping patterns
+            </li>
+            <li>
+              <strong>Testing Utilities:</strong> Built-in test client for easy
+              application testing
+            </li>
+          </ul>
+        </div>
+
+        <h3>Simple FastASGI Application</h3>
+        <div class="code-block" data-lang="python">
+          <pre>
+<span class="python-keyword">from</span> fastasgi <span class="python-keyword">import</span> FastASGI, Response
+
+<span class="python-comment"># Create application instance</span>
+app = FastASGI()
+
+<span class="python-comment"># Define route using decorator</span>
+@app.get(<span class="python-string">"/"</span>)
+<span class="python-keyword">async</span> <span class="python-keyword">def</span> hello_world(request):
+    <span class="python-keyword">return</span> Response(<span class="python-string">"Hello, World!"</span>)
+
+<span class="python-comment"># Add middleware using decorator</span>
+@app.middleware()
+<span class="python-keyword">async</span> <span class="python-keyword">def</span> logging_middleware(request, call_next):
+    <span class="python-builtin">print</span>(<span class="python-string">f"Request: {request.method} {request.path}"</span>)
+    response = <span class="python-keyword">await</span> call_next(request)
+    <span class="python-builtin">print</span>(<span class="python-string">f"Response: {response.status_code}"</span>)
+    <span class="python-keyword">return</span> response
+
+<span class="python-comment"># Run with: uvicorn main:app</span>
+</pre>
+        </div>
+
+        <h2>🚀 Ready for the Next Step?</h2>
+
+        <p>
+          Now that you understand how frameworks simplify ASGI development,
+          you're ready to dive deeper into the ASGI specification itself. In the
+          next section, we'll explore the ASGI protocol in detail.
+        </p>
+
+        <div class="highlight">
+          <strong>🎯 Next Up:</strong> In the ASGI Specification section, you'll
+          learn exactly how the scope/receive/send pattern works, explore
+          different protocol types, and see the message formats that make ASGI
+          applications possible.
+        </div>
+
+        <div class="tutorial-nav">
+          <a href="01-introduction.html" class="nav-button previous"
+            >← Introduction</a
+          >
+          <a href="03-asgi-specification.html" class="nav-button next"
+            >ASGI Specification →</a
+          >
+        </div>
+      </main>
+
+      <nav class="right-sidebar">
+        <h3>📖 In This Section</h3>
+        <ul>
+          <li>
+            <a href="#request-response-handling">Request/Response Handling</a>
+          </li>
+          <li><a href="#routing-patterns">Routing & URL Patterns</a></li>
+          <li><a href="#file-uploads">File Uploads & Form Data</a></li>
+          <li><a href="#middleware-extensions">Middleware & Extensions</a></li>
+          <li><a href="#about-fastasgi">About FastASGI</a></li>
+        </ul>
+      </nav>
+    </div>
+
+    <script src="scripts/tutorial.js"></script>
+  </body>
+</html>
