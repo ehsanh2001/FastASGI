@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Introduction - FastASGI Tutorial</title>
+    <link rel="stylesheet" href="styles/tutorial.css" />
+  </head>
+  <body>
+        <div class="container">
+          <aside class="sidebar">
+            <h1>ASGI Tutorial</h1>
+
+            <h2>📚 Sections</h2>
+            <ul>
+              <li><a href="index.html">🏠 Tutorial Home</a></li>
+              <li>
+                <a href="01-introduction.html" class="active"
+                  >🚀 Introduction</a
+                >
+              </li>
+              <li>
+                <a href="02-web-frameworks-role.html">🏗️ Web Frameworks Role</a>
+              </li>
+              <li>
+                <a href="03-asgi-specification.html">📋 Web Frameworks Role</a>
+              </li>
+              <li>
+                <a href="04-fastasgi-architecture.html"
+                  >🏗️ FastASGI Architecture</a
+                >
+              </li>
+              <li>
+                <a href="05-implementation-deep-dive.html"
+                  >🔧 Implementation Deep Dive</a
+                >
+              </li>
+              <li>
+                <a href="06-practical-examples.html">💡 Practical Examples</a>
+              </li>
+              <li><a href="07-advanced-topics.html">🔍 Advanced Topics</a></li>
+            </ul>
+
+            <h2>📖 Quick Links</h2>
+            <ul>
+              <li>
+                <a href="https://asgi.readthedocs.io/">ASGI Documentation</a>
+              </li>
+              <li><a href="https://fastapi.tiangolo.com/">FastAPI</a></li>
+              <li><a href="https://www.starlette.io/">Starlette</a></li>
+              <li>
+                <a href="https://github.com/ehsanh2001/FastASGI"
+                  >FastASGI Repository</a
+                >
+              </li>
+            </ul>
+          </aside>
+
+          <main class="content">
+            <h1>🚀 Introduction to ASGI</h1>
+            <div class="highlight">
+              <strong>📖 In this section:</strong> You'll learn what ASGI is,
+              how it differs from WSGI, and why it's important for modern Python
+              web development. We'll also introduce FastASGI and set
+              expectations for the rest of the tutorial.
+            </div>
+
+            <h2 id="web-architecture">🏗️ Where ASGI Fits?</h2>
+
+            <p>
+              Before diving into ASGI specifics, let's quickly see where ASGI
+              fits in a web application stack:
+            </p>
+
+            <div class="flow-diagram">
+              <h4>Simple Web Application Flow</h4>
+              <div class="step-box">Web Browser</div>
+              <span class="arrow">→</span>
+              <div class="step-box">
+                ASGI Server<br /><small>(Uvicorn, Hypercorn)</small>
+              </div>
+              <span class="arrow">→</span>
+              <div class="step-box">
+                ASGI Framework<br /><small>(FastAPI, FastASGI)</small>
+              </div>
+              <span class="arrow">→</span>
+              <div class="step-box">
+                Your Application<br /><small>(your Python code)</small>
+              </div>
+            </div>
+
+            <div class="warning">
+              <strong>⚠️ Development Only:</strong> This simple setup is perfect
+              for learning and development. Production deployments typically add
+              load balancers, reverse proxies, databases, caching, and other
+              infrastructure components for security, performance, and
+              reliability.
+            </div>
+
+            <h3>🎯 ASGI's Role in the Stack</h3>
+
+            <p>
+              <strong
+                >ASGI serves as the crucial interface between the ASGI server
+                and your Python application code.</strong
+              >
+              Think of it as a standardized "contract" that allows different
+              servers and frameworks to work together seamlessly.
+            </p>
+
+            <div class="info">
+              <strong>🔑 Key Points:</strong>
+              <ul>
+                <li>
+                  <strong>It's not a web server</strong> - you still need an
+                  ASGI server (like Uvicorn) to run your application
+                </li>
+                <li>
+                  <strong>It's the specification</strong> that defines how
+                  servers and frameworks communicate
+                </li>
+                <li>
+                  <strong>It enables flexibility</strong> - you can swap servers
+                  (Uvicorn ↔ Hypercorn) or frameworks (FastAPI ↔ FastASGI)
+                  without changing the interface
+                </li>
+                <li>
+                  <strong>Think of it as the "language"</strong> that servers
+                  and frameworks use to talk to each other
+                </li>
+              </ul>
+            </div>
+
+            <h2 id="what-is-asgi">What is ASGI?</h2>
+
+            <div class="section-transition">
+              <p>
+                <strong
+                  >Now that you've seen where ASGI fits in the web stack</strong
+                >, let's dive into what ASGI actually is and how it works at a
+                fundamental level.
+              </p>
+            </div>
+
+            <p>
+              <strong>ASGI (Asynchronous Server Gateway Interface)</strong> is a
+              specification for Python web servers, frameworks, and
+              applications. It's the spiritual successor to WSGI, designed to
+              handle not just HTTP requests, but also WebSockets, background
+              tasks, and other asynchronous protocols.
+            </p>
+
+            <div class="info">
+              <strong>Key Insight:</strong> ASGI extends the request-response
+              model to support long-lived connections, real-time communication,
+              and asynchronous operations that are essential for modern web
+              applications.
+            </div>
+
+            <p>
+              At its core, an ASGI application is simply a coroutine function
+              that accepts three parameters. Here's a complete, runnable
+              example:
+            </p>
+
+            <div class="code-block" data-lang="python">
+              <pre>
+<span class="python-comment"># Save this as: hello_asgi.py</span>
+<span class="python-keyword">async</span> <span class="python-keyword">def</span> application(scope, receive, send):
+    <span class="python-string">"""
+    A simple ASGI application that responds "Hello, ASGI World!"
+    """</span>
+    <span class="python-keyword">if</span> scope[<span class="python-string">'type'</span>] == <span class="python-string">'http'</span>:
+        <span class="python-comment"># Send HTTP response start</span>
+        <span class="python-keyword">await</span> send({
+            <span class="python-string">'type'</span>: <span class="python-string">'http.response.start'</span>,
+            <span class="python-string">'status'</span>: <span class="python-number">200</span>,
+            <span class="python-string">'headers'</span>: [
+                (<span class="python-string">b'content-type'</span>, <span class="python-string">b'text/html'</span>),
+            ],
+        })
+        
+        <span class="python-comment"># Send HTTP response body</span>
+        <span class="python-keyword">await</span> send({
+            <span class="python-string">'type'</span>: <span class="python-string">'http.response.body'</span>,
+            <span class="python-string">'body'</span>: <span class="python-string">b'&lt;h1&gt;Hello, ASGI World!&lt;/h1&gt;&lt;p&gt;This is a pure ASGI application.&lt;/p&gt;'</span>,
+        })
+</pre>
+            </div>
+
+            <div class="implementation-section">
+              <h4>🚀 Try It Yourself!</h4>
+              <p>Follow these steps to run this ASGI application:</p>
+
+              <h5>Step 1: Install Uvicorn</h5>
+              <div class="code-block" data-lang="bash">
+                <pre>pip install uvicorn</pre>
+              </div>
+
+              <h5>Step 2: Save the Code</h5>
+              <p>
+                Copy the Python code above and save it as
+                <code>hello_asgi.py</code>
+              </p>
+
+              <h5>Step 3: Run with Uvicorn</h5>
+              <div class="code-block" data-lang="bash">
+                <pre>uvicorn hello_asgi:application --reload</pre>
+              </div>
+
+              <h5>Step 4: Open Your Browser</h5>
+              <p>
+                Visit
+                <a href="http://localhost:8000" target="_blank" rel="noopener"
+                  >http://localhost:8000</a
+                >
+                to see your ASGI app in action!
+              </p>
+
+              <div class="info">
+                <strong>💡 What's happening:</strong>
+                <ul>
+                  <li>
+                    <strong>Uvicorn</strong> is the ASGI server that handles
+                    HTTP connections
+                  </li>
+                  <li>
+                    <strong>hello_asgi:application</strong> tells Uvicorn to
+                    import the <code>application</code> function from
+                    <code>hello_asgi.py</code>
+                  </li>
+                  <li>
+                    <strong>--reload</strong> automatically restarts the server
+                    when you change the code
+                  </li>
+                  <li>
+                    <strong>Your function</strong> receives each HTTP request
+                    and sends back the HTML response
+                  </li>
+                </ul>
+              </div>
+            </div>
+
+            <h2 id="wsgi-vs-asgi">
+              WSGI vs ASGI: Understanding the Difference
+            </h2>
+
+            <div class="section-transition">
+              <p>
+                <strong>Now that you understand what ASGI is</strong>, let's see
+                how it compares to WSGI and why the Python community needed a
+                new standard for modern web applications.
+              </p>
+            </div>
+
+            <p>To understand why ASGI exists, let's compare it with WSGI:</p>
+
+            <table class="spec-table">
+              <caption>
+                WSGI vs ASGI Feature Comparison
+              </caption>
+              <thead>
+                <tr>
+                  <th>Aspect</th>
+                  <th>WSGI</th>
+                  <th>ASGI</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>Execution Model</strong></td>
+                  <td>Synchronous only</td>
+                  <td>Synchronous + Asynchronous</td>
+                </tr>
+                <tr>
+                  <td><strong>Connection Types</strong></td>
+                  <td>HTTP request-response only</td>
+                  <td>HTTP, WebSocket, custom protocols</td>
+                </tr>
+                <tr>
+                  <td><strong>Concurrency</strong></td>
+                  <td>Thread/process-based</td>
+                  <td>Event loop-based</td>
+                </tr>
+                <tr>
+                  <td><strong>Long-lived Connections</strong></td>
+                  <td>Not supported</td>
+                  <td>Fully supported</td>
+                </tr>
+                <tr>
+                  <td><strong>Background Tasks</strong></td>
+                  <td>Limited/external</td>
+                  <td>Built-in support</td>
+                </tr>
+              </tbody>
+            </table>
+
+            <div class="section-transition">
+              <p>
+                <strong>Now that you've seen the differences</strong>, let's
+                look at what these new capabilities unlock in practice. ASGI
+                enables high concurrency, real-time features, and efficient
+                resource usage that wasn't possible with WSGI.
+              </p>
+            </div>
+
+            <h3>WSGI Application Example</h3>
+            <div class="code-block" data-lang="python">
+              <pre>
+<span class="python-keyword">def</span> wsgi_application(environ, start_response):
+    <span class="python-string">"""Traditional WSGI application - synchronous only."""</span>
+    status = <span class="python-string">'200 OK'</span>
+    headers = [(<span class="python-string">'Content-Type'</span>, <span class="python-string">'text/plain'</span>)]
+    start_response(status, headers)
+    <span class="python-keyword">return</span> [<span class="python-string">b'Hello from WSGI!'</span>]
+</pre>
+            </div>
+
+            <h3>ASGI Application Example</h3>
+            <div class="code-block" data-lang="python">
+              <pre>
+<span class="python-keyword">async</span> <span class="python-keyword">def</span> asgi_application(scope, receive, send):
+    <span class="python-string">"""Modern ASGI application - supports async operations."""</span>
+    <span class="python-keyword">if</span> scope[<span class="python-string">'type'</span>] == <span class="python-string">'http'</span>:
+        <span class="python-keyword">await</span> send({
+            <span class="python-string">'type'</span>: <span class="python-string">'http.response.start'</span>,
+            <span class="python-string">'status'</span>: <span class="python-number">200</span>,
+            <span class="python-string">'headers'</span>: [(<span class="python-string">b'content-type'</span>, <span class="python-string">b'text/plain'</span>)],
+        })
+        <span class="python-keyword">await</span> send({
+            <span class="python-string">'type'</span>: <span class="python-string">'http.response.body'</span>,
+            <span class="python-string">'body'</span>: <span class="python-string">b'Hello from ASGI!'</span>,
+        })
+</pre>
+            </div>
+
+            <h2 id="why-asgi-matters">Why ASGI Matters</h2>
+
+            <p>
+              Modern web applications have evolved beyond simple
+              request-response patterns. Today's applications need:
+            </p>
+
+            <h3>🚄 High Concurrency</h3>
+            <p>
+              <strong>Why this matters:</strong> Memory and scaling efficiency.
+              ASGI's event loop model allows a single process to manage many
+              more connections than traditional threading models.
+            </p>
+
+            <table class="spec-table">
+              <caption>
+                Concurrency Models: Performance and Resource Usage
+              </caption>
+              <thead>
+                <tr>
+                  <th>Technology</th>
+                  <th>Concurrency Model</th>
+                  <th>Typical Scale</th>
+                  <th>Resource Usage</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>WSGI</strong></td>
+                  <td>Thread/Process-based</td>
+                  <td>~100-1,000 concurrent requests</td>
+                  <td>High memory per connection</td>
+                </tr>
+                <tr>
+                  <td><strong>ASGI</strong></td>
+                  <td>Event loop-based</td>
+                  <td>~10,000+ concurrent connections</td>
+                  <td>Low memory per connection</td>
+                </tr>
+              </tbody>
+            </table>
+
+            <p>
+              <strong>Important note:</strong> This enables cooperative I/O
+              efficiency, not CPU acceleration. ASGI excels at I/O-bound
+              operations like database queries and API calls.
+            </p>
+
+            <h3>🔄 Real-time Features</h3>
+            <p>
+              WebSockets, Server-Sent Events, and real-time communication are
+              first-class citizens in ASGI.
+            </p>
+
+            <div class="code-block" data-lang="python">
+              <pre>
+<span class="python-comment"># WebSocket handling in ASGI</span>
+<span class="python-keyword">async</span> <span class="python-keyword">def</span> websocket_handler(scope, receive, send):
+    <span class="python-keyword">if</span> scope[<span class="python-string">'type'</span>] == <span class="python-string">'websocket'</span>:
+        <span class="python-keyword">await</span> send({<span class="python-string">'type'</span>: <span class="python-string">'websocket.accept'</span>})
+        
+        <span class="python-keyword">while</span> <span class="python-builtin">True</span>:
+            message = <span class="python-keyword">await</span> receive()
+            <span class="python-keyword">if</span> message[<span class="python-string">'type'</span>] == <span class="python-string">'websocket.receive'</span>:
+                <span class="python-comment"># Echo message back</span>
+                <span class="python-keyword">await</span> send({
+                    <span class="python-string">'type'</span>: <span class="python-string">'websocket.send'</span>,
+                    <span class="python-string">'text'</span>: <span class="python-string">f"Echo: {message['text']}"</span>
+                })
+</pre>
+            </div>
+
+            <h3>⚡ Async Operations</h3>
+            <p>
+              Non-blocking operations running concurrently dramatically improve
+              performance. This shows the true power of async programming -
+              multiple operations happening at once!
+            </p>
+
+            <div class="code-block" data-lang="python">
+              <pre>
+<span class="python-keyword">import</span> asyncio
+
+<span class="python-keyword">async</span> <span class="python-keyword">def</span> fetch_user_data(user_id):
+    <span class="python-string">"""Async operations running concurrently - much faster!"""</span>
+    
+    <span class="python-comment"># Start all operations concurrently (non-blocking)</span>
+    user_task = database.fetch_user(user_id)
+    profile_task = external_api.get_profile(user_id)  
+    avatar_task = file_storage.read_avatar(user_id)
+    
+    <span class="python-comment"># Wait for ALL operations to complete at once</span>
+    user, profile, avatar = <span class="python-keyword">await</span> asyncio.gather(
+        user_task,
+        profile_task,
+        avatar_task
+    )
+    
+    <span class="python-keyword">return</span> {
+        <span class="python-string">'user'</span>: user,
+        <span class="python-string">'profile'</span>: profile, 
+        <span class="python-string">'avatar'</span>: avatar
+    }
+
+<span class="python-comment"># Performance comparison:</span>
+<span class="python-comment"># Sequential: 300ms + 200ms + 100ms = 600ms total</span>
+<span class="python-comment"># Concurrent: max(300ms, 200ms, 100ms) = 300ms total</span>
+</pre>
+            </div>
+
+            <h3>🔧 Background Tasks</h3>
+            <ul>
+              <li>
+                ASGI applications can manage background tasks within the same
+                process
+              </li>
+              <li>Share resources like database connections efficiently</li>
+              <li>Built-in task scheduling and lifecycle management</li>
+              <li>No need for external task queues for simple operations</li>
+            </ul>
+
+            <h2>🚀 Ready to Continue?</h2>
+
+            <p>
+              Now that you understand what ASGI is and why it matters, you're
+              ready to learn how frameworks make ASGI development much easier.
+              In the next section, we'll explore what ASGI web frameworks do for
+              you.
+            </p>
+
+            <div class="highlight">
+              <strong>🎯 Next Up:</strong> In the Web Frameworks Role section,
+              you'll see how frameworks handle the complex, repetitive parts of
+              ASGI development and learn about FastASGI's educational approach
+              to demonstrating these concepts.
+            </div>
+
+            <div class="tutorial-nav">
+              <a href="index.html" class="nav-button previous"
+                >← Tutorial Home</a
+              >
+              <a href="02-web-frameworks-role.html" class="nav-button next"
+                >Web Frameworks Role →</a
+              >
+            </div>
+          </main>
+
+          <nav class="right-sidebar">
+            <h3>📖 In This Section</h3>
+            <ul>
+              <li><a href="#web-architecture">Where ASGI Fits?</a></li>
+              <li><a href="#what-is-asgi">What is ASGI?</a></li>
+              <li><a href="#wsgi-vs-asgi">WSGI vs ASGI</a></li>
+              <li><a href="#why-asgi-matters">Why ASGI Matters</a></li>
+            </ul>
+          </nav>
+        </div>
+
+        <script src="scripts/tutorial.js"></script>
+      </body>
+    </html>
+  </head>
+</html>
