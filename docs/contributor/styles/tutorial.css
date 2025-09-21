@@ -1,3 +1,275 @@
+/* Difficulty Indicator Styles */
+.difficulty-indicator {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 15px;
+  margin-bottom: 20px;
+  padding: 15px;
+  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  border-left: 4px solid #28a745;
+  border-radius: 6px;
+  font-size: 14px;
+}
+
+.difficulty-indicator .level {
+  color: #28a745;
+  font-weight: 600;
+}
+
+.difficulty-indicator .time {
+  color: #6c757d;
+  font-weight: 500;
+}
+
+.difficulty-indicator .concepts {
+  color: #495057;
+  font-weight: 500;
+}
+
+/* Top Navigation */
+.top-nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 15px 0;
+  padding: 12px 16px;
+  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  border-radius: 6px;
+  border: 1px solid #dee2e6;
+}
+
+.top-nav-button {
+  padding: 6px 12px;
+  background: #fff;
+  color: #495057;
+  text-decoration: none;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  border: 1px solid #ced4da;
+}
+
+.top-nav-button:hover {
+  background: #6c757d;
+  color: white;
+  border-color: #6c757d;
+}
+
+.page-indicator {
+  font-size: 13px;
+  color: #6c757d;
+  font-weight: 500;
+  background: white;
+  padding: 6px 12px;
+  border-radius: 4px;
+  border: 1px solid #ced4da;
+}
+
+/* Tutorial Navigation Enhancements */
+.tutorial-nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 40px 0 30px 0;
+  padding: 20px 0;
+  border-top: 2px solid #e9ecef;
+}
+
+.nav-placeholder {
+  width: 150px; /* Same width as nav buttons for proper spacing */
+}
+
+.nav-button {
+  display: inline-flex;
+  align-items: center;
+  padding: 12px 20px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  text-decoration: none;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 14px;
+  transition: all 0.3s ease;
+  min-width: 150px;
+  justify-content: center;
+}
+
+.nav-button:hover {
+  background: linear-gradient(135deg, #5a67d8 0%, #6b46c1 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+}
+
+.nav-button.previous {
+  background: linear-gradient(135deg, #64748b 0%, #475569 100%);
+}
+
+.nav-button.previous:hover {
+  background: linear-gradient(135deg, #475569 0%, #334155 100%);
+  box-shadow: 0 4px 12px rgba(100, 116, 139, 0.3);
+}
+
+.nav-button.next {
+  background: linear-gradient(135deg, #059669 0%, #047857 100%);
+}
+
+.nav-button.next:hover {
+  background: linear-gradient(135deg, #047857 0%, #065f46 100%);
+  box-shadow: 0 4px 12px rgba(5, 150, 105, 0.3);
+}
+
+/* Tutorial Progress Indicator */
+.tutorial-progress {
+  background: linear-gradient(135deg, #f3e5f5 0%, #e1bee7 100%);
+  border-left: 4px solid #9c27b0;
+  padding: 20px;
+  margin: 20px 0;
+  border-radius: 6px;
+}
+
+.tutorial-progress h4 {
+  margin-top: 0;
+  color: #6a1b9a;
+  font-size: 16px;
+}
+
+.progress-bar {
+  background-color: #e0e0e0;
+  border-radius: 10px;
+  height: 10px;
+  margin: 10px 0;
+  overflow: hidden;
+}
+
+.progress-fill {
+  background: linear-gradient(90deg, #9c27b0 0%, #e91e63 100%);
+  height: 100%;
+  border-radius: 10px;
+  transition: width 0.3s ease;
+}
+
+.progress-start {
+  width: 0%;
+}
+
+.progress-text {
+  color: #4a148c;
+  font-size: 14px;
+  margin: 5px 0 0 0;
+  text-align: center;
+}
+
+/* Check Understanding Boxes */
+.check-understanding {
+  background: linear-gradient(135deg, #e8f5e8 0%, #c8e6c9 100%);
+  border-left: 4px solid #4caf50;
+  padding: 20px;
+  margin: 25px 0;
+  border-radius: 6px;
+}
+
+.check-understanding h4 {
+  margin-top: 0;
+  color: #2e7d32;
+  font-size: 16px;
+}
+
+.check-understanding p {
+  color: #1b5e20;
+  margin: 10px 0;
+}
+
+.check-understanding ul {
+  color: #2e7d32;
+  margin: 10px 0;
+}
+
+.check-understanding li {
+  margin: 8px 0;
+  padding-left: 5px;
+}
+
+.check-understanding details {
+  margin-top: 15px;
+  cursor: pointer;
+}
+
+.check-understanding summary {
+  color: #388e3c;
+  font-weight: 600;
+  padding: 8px;
+  background: rgba(76, 175, 80, 0.1);
+  border-radius: 4px;
+  outline: none;
+}
+
+.check-understanding summary:hover {
+  background: rgba(76, 175, 80, 0.2);
+}
+
+.check-understanding details[open] summary {
+  margin-bottom: 10px;
+}
+
+.check-understanding details p {
+  background: rgba(255, 255, 255, 0.7);
+  padding: 10px;
+  border-radius: 4px;
+  margin: 0;
+}
+
+/* Quick Start Path Styles */
+.quick-start-path {
+  background: linear-gradient(135deg, #fff3cd 0%, #ffeaa7 100%);
+  border-left: 4px solid #f39c12;
+  padding: 15px 20px;
+  margin: 20px 0;
+  border-radius: 6px;
+}
+
+.quick-start-path h4 {
+  margin-top: 0;
+  color: #b7610f;
+  font-size: 16px;
+}
+
+.quick-start-path p {
+  margin: 10px 0 5px 0;
+  color: #856404;
+}
+
+.quick-start-path small {
+  color: #6c5406;
+  font-style: italic;
+}
+
+.quick-start-path a {
+  color: #b7610f;
+  text-decoration: underline;
+  font-weight: 500;
+}
+
+.quick-start-path a:hover {
+  color: #dc7f2a;
+}
+
+/* Section Transition Styles */
+.section-transition {
+  background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+  border-left: 4px solid #2196f3;
+  padding: 15px 20px;
+  margin: 20px 0;
+  border-radius: 6px;
+  font-style: italic;
+}
+
+.section-transition p {
+  margin: 0;
+  color: #1565c0;
+  font-weight: 500;
+}
+
 /* FastASGI Tutorial Custom Styles - No Bootstrap */
 html,
 body {
@@ -369,6 +641,27 @@ p {
   transform: translateY(-2px);
   box-shadow: 0 5px 12px rgba(102, 126, 234, 0.4);
   border-color: rgba(255, 255, 255, 0.3);
+}
+
+/* Optional components styling */
+.step-box.optional {
+  opacity: 0.7;
+  border: 2px dashed rgba(255, 255, 255, 0.5);
+  background: linear-gradient(
+    135deg,
+    rgba(102, 126, 234, 0.7) 0%,
+    rgba(118, 75, 162, 0.7) 100%
+  );
+}
+
+.step-box.optional:hover {
+  opacity: 0.9;
+  transform: translateY(-2px);
+  box-shadow: 0 5px 12px rgba(102, 126, 234, 0.3);
+}
+
+.arrow.optional {
+  opacity: 0.7;
 }
 
 .arrow {
