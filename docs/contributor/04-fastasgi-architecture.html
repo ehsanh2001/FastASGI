@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FastASGI Architecture Overview - FastASGI Tutorial</title>
+    <link rel="stylesheet" href="styles/tutorial.css" />
+  </head>
+  <body>
+    <div class="container">
+      <aside class="sidebar">
+        <h1>ASGI Tutorial</h1>
+
+        <h2>📚 Sections</h2>
+        <ul>
+          <li><a href="index.html">🏠 Tutorial Home</a></li>
+          <li><a href="01-introduction.html">🚀 Introduction</a></li>
+          <li>
+            <a href="02-web-frameworks-role.html">🏗️ Web Frameworks Role</a>
+          </li>
+          <li>
+            <a href="03-asgi-specification.html"
+              >📋 ASGI Specification Essentials</a
+            >
+          </li>
+          <li>
+            <a href="04-fastasgi-architecture.html" class="active"
+              >🏗️ FastASGI Architecture</a
+            >
+          </li>
+          <li>
+            <a href="05-implementation-deep-dive.html"
+              >🔧 Implementation Deep Dive</a
+            >
+          </li>
+          <li>
+            <a href="06-practical-examples.html">💡 Practical Examples</a>
+          </li>
+          <li><a href="07-advanced-topics.html">🔍 Advanced Topics</a></li>
+        </ul>
+
+        <h2>📖 Quick Links</h2>
+        <ul>
+          <li><a href="https://asgi.readthedocs.io/">ASGI Documentation</a></li>
+          <li><a href="https://fastapi.tiangolo.com/">FastAPI</a></li>
+          <li><a href="https://www.starlette.io/">Starlette</a></li>
+          <li>
+            <a href="https://github.com/ehsanh2001/FastASGI"
+              >FastASGI Repository</a
+            >
+          </li>
+        </ul>
+      </aside>
+
+      <main class="content">
+        <h1 id="architecture-overview">🏗️ FastASGI Architecture Overview</h1>
+
+        <div class="highlight">
+          <strong>📖 In this section:</strong> Understanding FastASGI's
+          architecture is essential for framework contributors. This guide
+          breaks down the core classes and their responsibilities, giving you a
+          clear map of how the framework operates internally.
+        </div>
+
+        <h2 id="core-classes">Core Classes Overview</h2>
+
+        <p>
+          FastASGI is built around a small set of core classes, each with
+          specific responsibilities. Here's what each class does and how they
+          work together:
+        </p>
+
+        <div class="class-overview">
+          <h3 id="fastasgi-class">🚀 FastASGI</h3>
+          <p>
+            <strong>Location:</strong> <code>fastasgi/fastasgi.py</code><br />
+            <strong>Purpose:</strong> The main application class that implements
+            the ASGI protocol and coordinates all other components. It handles
+            ASGI message routing (HTTP, Lifespan), manages the middleware chain,
+            and provides the decorator interface for route registration.
+          </p>
+
+          <h3 id="apirouter-class">🔄 APIRouter</h3>
+          <p>
+            <strong>Location:</strong> <code>fastasgi/routing/apirouter.py</code
+            ><br />
+            <strong>Purpose:</strong> Manages collections of routes and handles
+            route matching logic. It supports nested routers with prefixes,
+            provides decorators for route registration, and implements the core
+            route dispatch mechanism that converts URL paths to handler
+            functions.
+          </p>
+
+          <h3 id="route-class">🛤️ Route</h3>
+          <p>
+            <strong>Location:</strong> <code>fastasgi/routing/route.py</code
+            ><br />
+            <strong>Purpose:</strong> Represents individual route definitions
+            with path pattern matching and parameter extraction. It compiles
+            path patterns into regex, handles type conversion for path
+            parameters, and implements priority-based route ordering for
+            efficient matching.
+          </p>
+
+          <h3 id="request-class">📥 Request</h3>
+          <p>
+            <strong>Location:</strong> <code>fastasgi/request/request.py</code
+            ><br />
+            <strong>Purpose:</strong> Encapsulates HTTP request data and
+            provides convenient access methods. It handles ASGI scope
+            conversion, manages request body parsing (including
+            multipart/form-data), and provides access to headers, cookies, and
+            query parameters.
+          </p>
+
+          <h3 id="response-class">📤 Response</h3>
+          <p>
+            <strong>Location:</strong> <code>fastasgi/response.py</code><br />
+            <strong>Purpose:</strong> Represents HTTP responses with automatic
+            content type detection and ASGI message generation. It handles
+            various content types (text, JSON, HTML), manages response headers
+            and cookies, and converts response data into ASGI message format.
+          </p>
+
+          <h3 id="middlewarechain-class">🔗 MiddlewareChain</h3>
+          <p>
+            <strong>Location:</strong>
+            <code>fastasgi/middleware/middlewarechain.py</code><br />
+            <strong>Purpose:</strong> Builds and manages the middleware
+            execution pipeline using function composition. It creates a single
+            callable from multiple middleware functions, handles middleware
+            ordering, and ensures proper request/response flow through the
+            chain.
+          </p>
+
+          <h3 id="uploadfile-class">📁 UploadFile</h3>
+          <p>
+            <strong>Location:</strong>
+            <code>fastasgi/request/upload_file.py</code><br />
+            <strong>Purpose:</strong> Manages file uploads with memory and disk
+            storage optimization. It provides a file-like interface for uploaded
+            files, handles automatic cleanup of temporary files, and supports
+            both in-memory and disk-based storage depending on file size.
+          </p>
+
+          <h3 id="httpstatus-class">🔢 HTTPStatus</h3>
+          <p>
+            <strong>Location:</strong> <code>fastasgi/status.py</code><br />
+            <strong>Purpose:</strong> Provides standardized HTTP status codes as
+            an enumeration. It ensures consistent status code usage across the
+            framework and includes both numeric codes and descriptive names for
+            common HTTP responses.
+          </p>
+        </div>
+
+        <div class="info">
+          <strong>💡 Next Steps:</strong> Now that you understand the core
+          classes, the next sections will dive deeper into how these components
+          interact, their internal implementation details, and how to extend
+          them for your framework needs.
+        </div>
+
+        <div class="tutorial-nav">
+          <a href="03-asgi-specification.html" class="nav-button previous"
+            >← ASGI Specification Essentials</a
+          >
+          <a href="05-implementation-deep-dive.html" class="nav-button next"
+            >Implementation Deep Dive →</a
+          >
+        </div>
+      </main>
+
+      <nav class="right-sidebar">
+        <h3>📖 In This Section</h3>
+        <ul>
+          <li><a href="#core-classes">Core Classes Overview</a></li>
+          <li><a href="#fastasgi-class">FastASGI</a></li>
+          <li><a href="#apirouter-class">APIRouter</a></li>
+          <li><a href="#route-class">Route</a></li>
+          <li><a href="#request-class">Request</a></li>
+          <li><a href="#response-class">Response</a></li>
+          <li><a href="#middlewarechain-class">MiddlewareChain</a></li>
+          <li><a href="#uploadfile-class">UploadFile</a></li>
+          <li><a href="#httpstatus-class">HTTPStatus</a></li>
+        </ul>
+      </nav>
+    </div>
+
+    <script src="scripts/tutorial.js"></script>
+  </body>
+</html>
