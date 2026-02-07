@@ -1,0 +1,745 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Implementation Deep Dive - FastASGI Tutorial</title>
+    <link rel="stylesheet" href="styles/tutorial.css" />
+  </head>
+  <body>
+    <div class="container">
+      <aside class="sidebar">
+        <h1>ASGI Tutorial</h1>
+
+        <h2>📚 Sections</h2>
+        <ul>
+          <li><a href="index.html">🏠 Tutorial Home</a></li>
+          <li><a href="01-introduction.html">🚀 Introduction</a></li>
+          <li>
+            <a href="02-web-frameworks-role.html">🏗️ Web Frameworks Role</a>
+          </li>
+          <li>
+            <a href="03-asgi-specification.html"
+              >📋 ASGI Specification Essentials</a
+            >
+          </li>
+          <li>
+            <a href="04-fastasgi-architecture.html">🏗️ FastASGI Architecture</a>
+          </li>
+          <li>
+            <a href="05-deep-dive.html" class="active"
+              >🔧 Implementation Deep Dive</a
+            >
+          </li>
+        </ul>
+
+        <h2>📖 Quick Links</h2>
+        <ul>
+          <li><a href="https://asgi.readthedocs.io/">ASGI Documentation</a></li>
+          <li><a href="https://fastapi.tiangolo.com/">FastAPI</a></li>
+          <li><a href="https://www.starlette.io/">Starlette</a></li>
+          <li>
+            <a href="https://github.com/ehsanh2001/FastASGI"
+              >FastASGI Repository</a
+            >
+          </li>
+        </ul>
+      </aside>
+
+      <main class="content">
+        <h1 id="deep-dive">🔧 Implementation Deep Dive</h1>
+
+        <div class="highlight">
+          <strong>📖 In this section:</strong> We go beyond architecture
+          diagrams and into the actual algorithms, Python techniques, and design
+          trade-offs behind every core component of FastASGI. Each subsection
+          explains <em>why</em> the code is written the way it is and what
+          alternatives exist.
+        </div>
+
+        <!-- ============================================================ -->
+        <!-- FASTASGI APPLICATION CLASS                                    -->
+        <!-- ============================================================ -->
+        <h2 id="fastasgi-class">The FastASGI Application Class</h2>
+
+        <p>
+          The <code>FastASGI</code> class in
+          <code>fastasgi/fastasgi.py</code> is the single entry-point that the
+          ASGI server calls. Its <code>__call__</code> method receives the three
+          ASGI primitives — <code>scope</code>, <code>receive</code>, and
+          <code>send</code> — and dispatches to the appropriate handler based on
+          the protocol type:
+        </p>
+
+        <div class="code-block" data-lang="python">
+          <pre>
+<span class="python-keyword">async</span> <span class="python-keyword">def</span> __call__(self, scope, receive, send):
+    <span class="python-keyword">if</span> scope[<span class="python-string">"type"</span>] == <span class="python-string">"http"</span>:
+        <span class="python-keyword">await</span> self._handle_http(scope, receive, send)
+    <span class="python-keyword">elif</span> scope[<span class="python-string">"type"</span>] == <span class="python-string">"lifespan"</span>:
+        <span class="python-keyword">await</span> self._handle_lifespan(scope, receive, send)
+    <span class="python-keyword">else</span>:
+        <span class="python-keyword">await</span> self._handle_unsupported_protocol(send)</pre>
+        </div>
+
+        <p>
+          This is the ASGI callable interface in action. The server (e.g.
+          Uvicorn) calls <code>await app(scope, receive, send)</code> for every
+          incoming connection, and the framework decides what to do with it.
+        </p>
+
+        <h3 id="http-flow">HTTP Request Lifecycle</h3>
+        <p>
+          The <code>_handle_http</code> method orchestrates the entire
+          request-response cycle in five steps:
+        </p>
+
+        <ol>
+          <li>
+            <strong>Build the Request object</strong> —
+            <code>Request.from_asgi(scope, receive)</code> wraps the raw ASGI
+            scope and reads the complete body from the
+            <code>receive</code> channel.
+          </li>
+          <li>
+            <strong>Run the middleware stack</strong> — The pre-built middleware
+            chain is invoked. It processes the request through each middleware
+            before reaching the router.
+          </li>
+          <li>
+            <strong>Route and handle</strong> — The router matches the path and
+            method, injects parameters, and calls the handler function.
+          </li>
+          <li>
+            <strong>Send the ASGI response</strong> — The
+            <code>Response</code> object is converted to ASGI messages (<code
+              >http.response.start</code
+            >
+            followed by <code>http.response.body</code>) and sent back via the
+            <code>send</code> callable.
+          </li>
+          <li>
+            <strong>Clean up</strong> — Temporary files from uploads are deleted
+            in a <code>finally</code> block so resources are released even when
+            an exception occurs.
+          </li>
+        </ol>
+
+        <h3 id="lifespan-handling">Lifespan Protocol Handling</h3>
+        <p>
+          FastASGI registers its own internal startup handler that builds the
+          middleware chain, and a shutdown handler that cleans up any active
+          request resources. User-registered handlers are appended after these
+          internal ones, so the framework is always ready before user code runs.
+        </p>
+
+        <div class="info">
+          <strong>💡 Python Technique — <code>weakref.WeakSet</code>:</strong>
+          The <code>Request</code> class keeps a global <code>WeakSet</code> of
+          all active request objects. Because weak references do not prevent
+          garbage collection, requests that go out of scope are automatically
+          removed from the set. During shutdown the framework iterates this set
+          to clean up any lingering temp files.
+        </div>
+
+        <!-- ============================================================ -->
+        <!-- MIDDLEWARE CHAIN                                              -->
+        <!-- ============================================================ -->
+        <h2 id="middleware-chain">Middleware Chain — Design & Algorithm</h2>
+
+        <p>
+          The middleware system is implemented in
+          <code>fastasgi/middleware/middlewarechain.py</code>. It follows the
+          classic <strong>"onion" model</strong>: each middleware wraps the next
+          one, so a request travels inward through all layers, reaches the
+          router at the centre, and the response travels back outward through
+          the same layers in reverse order.
+        </p>
+
+        <h3 id="why-chaining">Why Function-Composition Chaining?</h3>
+        <p>
+          There are two common approaches to building a middleware pipeline:
+        </p>
+        <ul>
+          <li>
+            <strong>List iteration</strong> — store middleware in a list and
+            loop through them at request time. Simple, but every request pays
+            the cost of iterating the list and deciding "what's next."
+          </li>
+          <li>
+            <strong>Function composition</strong> — at startup, wrap each
+            middleware around the next one to produce a single callable.
+            Subsequent requests simply call that callable with zero lookup
+            overhead.
+          </li>
+        </ul>
+        <p>
+          FastASGI uses <strong>function composition</strong>. The
+          <code>MiddlewareChain.build()</code> method runs once during the
+          lifespan startup event and produces one async function that embodies
+          the entire pipeline. After that, every HTTP request calls that
+          function directly — no list traversal, no index tracking.
+        </p>
+
+        <h3 id="chaining-algorithm">The Chaining Algorithm</h3>
+        <p>
+          The algorithm starts from the innermost layer (the router's
+          <code>handle_request</code>) and wraps outward:
+        </p>
+
+        <div class="code-block" data-lang="python">
+          <pre>
+<span class="python-keyword">def</span> build(self, endpoint):
+    <span class="python-keyword">if</span> <span class="python-keyword">not</span> self._middlewares:
+        <span class="python-keyword">return</span> endpoint
+
+    current_handler = endpoint
+
+    <span class="python-comment"># Walk middleware in reverse so the first-registered</span>
+    <span class="python-comment"># middleware becomes the outermost wrapper.</span>
+    <span class="python-keyword">for</span> middleware <span class="python-keyword">in</span> <span class="python-builtin">reversed</span>(self._middlewares):
+        next_handler = current_handler
+
+        <span class="python-keyword">async</span> <span class="python-keyword">def</span> middleware_handler(
+            request, mw=middleware, next_app=next_handler
+        ):
+            <span class="python-keyword">async</span> <span class="python-keyword">def</span> call_next(req):
+                <span class="python-keyword">return</span> <span class="python-keyword">await</span> next_app(req)
+            <span class="python-keyword">return</span> <span class="python-keyword">await</span> mw(request, call_next)
+
+        current_handler = middleware_handler
+
+    <span class="python-keyword">return</span> current_handler</pre>
+        </div>
+
+        <p>
+          If you register middleware <strong>[A, B, C]</strong>, the build loop
+          processes them in reversed order <strong>C → B → A</strong> and
+          produces a chain equivalent to:
+        </p>
+        <p>
+          <code>Request → A → B → C → router → C → B → A → Response</code>
+        </p>
+
+        <div class="warning">
+          <strong>⚠️ Python Gotcha — Closures in Loops:</strong> The
+          <code>mw=middleware</code> and
+          <code>next_app=next_handler</code> default arguments are critical.
+          Without them, every closure would capture the <em>same</em> loop
+          variable and the chain would break. This is a well-known Python
+          pitfall when creating closures inside loops — default arguments bind
+          the value <em>at definition time</em>, not at call time.
+        </div>
+
+        <div class="info">
+          <strong>💡 Python Technique — <code>Protocol</code> class:</strong>
+          The <code>MiddlewareCallable</code> type is defined using Python's
+          <code>typing.Protocol</code>, which enables structural subtyping (duck
+          typing with type-checker support). Any async function matching the
+          signature <code>(request, call_next) → Response</code> satisfies the
+          protocol without explicitly inheriting from it.
+        </div>
+
+        <!-- ============================================================ -->
+        <!-- ROUTING ENGINE                                                -->
+        <!-- ============================================================ -->
+        <h2 id="routing-engine">Routing Engine — Design & Algorithm</h2>
+
+        <p>
+          Routing in FastASGI is handled by two classes:
+          <code>Route</code> (individual route definition) in
+          <code>fastasgi/routing/route.py</code> and
+          <code>APIRouter</code> (route collection and dispatch) in
+          <code>fastasgi/routing/apirouter.py</code>.
+        </p>
+
+        <h3 id="route-matching">Route Matching Strategy</h3>
+        <p>
+          FastASGI uses a <strong>linear scan with regex matching</strong>. When
+          a request comes in, the router iterates through its sorted list of
+          routes and returns the first match. Each individual route compiles its
+          path pattern into a regular expression at registration time, so the
+          per-request cost is just a regex match — not a pattern parse.
+        </p>
+
+        <h4>Path Pattern Compilation</h4>
+        <p>
+          When you define a route like
+          <code>/users/{user_id:int}/posts/{post_id}</code>, the
+          <code>Route.__init__</code> method calls
+          <code>_compile_route_pattern()</code> which walks the path string
+          character by character:
+        </p>
+        <ul>
+          <li>
+            Literal segments like <code>/users/</code> are regex-escaped and
+            appended verbatim.
+          </li>
+          <li>
+            Parameter segments inside <code>{...}</code> are parsed for a name
+            and an optional type (<code>int</code>, <code>float</code>,
+            <code>uuid</code>, <code>multipath</code>, or <code>str</code> by
+            default). The appropriate regex capture group is emitted — for
+            example <code>(\d+)</code> for <code>int</code> or
+            <code>([^/]+)</code> for <code>str</code>.
+          </li>
+        </ul>
+        <p>
+          The result is a single compiled <code>re.Pattern</code> object and an
+          ordered dictionary mapping parameter names to their Python types.
+          Because the regex is compiled once and reused on every request, the
+          amortised cost is very low.
+        </p>
+
+        <h4>Segment-Count Optimisation</h4>
+        <p>
+          Before running the regex, the <code>matches()</code> method performs a
+          quick <strong>segment count check</strong>: it compares the number of
+          <code>/</code>-separated segments in the request path with the route's
+          precomputed count. If they differ (and the route does not contain a
+          multipath parameter) the regex is skipped entirely. This fast-path
+          rejection avoids expensive regex calls for the majority of
+          non-matching routes.
+        </p>
+
+        <h4>Specificity-Based Sorting</h4>
+        <p>
+          Every time a route is added, the list is re-sorted by a
+          <strong>specificity tuple</strong>:
+        </p>
+
+        <div class="code-block" data-lang="python">
+          <pre>
+<span class="python-comment"># (priority, literal_segments, total_segments, -definition_order)</span>
+<span class="python-comment"># Higher values → checked first</span></pre>
+        </div>
+
+        <ul>
+          <li>
+            <strong>priority</strong> — explicit user-defined value (highest
+            precedence).
+          </li>
+          <li>
+            <strong>literal_segments</strong> — more static segments means more
+            specific.
+          </li>
+          <li>
+            <strong>total_segments</strong> — longer paths are more specific
+            than shorter ones.
+          </li>
+          <li>
+            <strong>definition_order</strong> — among equally specific routes,
+            the one registered first wins (negated so earlier = higher).
+          </li>
+        </ul>
+
+        <p>
+          This ensures that <code>/users/profile</code> is always checked before
+          <code>/users/{id}</code> without requiring the developer to assign
+          manual priorities in most cases.
+        </p>
+
+        <div class="info">
+          <strong>💡 Alternative Approach — Trie-Based Routing:</strong>
+          Production frameworks often use a
+          <strong>prefix trie (radix tree)</strong> for route matching, which
+          gives O(path-length) lookup regardless of how many routes are
+          registered. FastASGI's linear-scan approach is O(n) in the number of
+          routes, which is perfectly adequate for educational and small-scale
+          use. However, if you were building a framework intended for
+          applications with hundreds of routes, a trie would be a significantly
+          faster — though considerably more complex to implement — choice.
+        </div>
+
+        <h3 id="param-injection">Automatic Parameter Injection</h3>
+        <p>
+          FastASGI inspects handler function signatures at route-registration
+          time using Python's <code>inspect</code> module. This up-front work
+          allows the framework to:
+        </p>
+        <ul>
+          <li>
+            Detect which parameters are path parameters and which expect a
+            <code>Request</code> object, based on type annotations.
+          </li>
+          <li>
+            Validate at startup that every path parameter in the route pattern
+            has a corresponding handler parameter, and vice versa — catching
+            mismatches early instead of at request time.
+          </li>
+          <li>
+            Build a fast injection path: at request time,
+            <code>route.handle()</code> simply populates a
+            <code>kwargs</code> dict from the precomputed lists and calls the
+            handler.
+          </li>
+        </ul>
+
+        <div class="code-block" data-lang="python">
+          <pre>
+<span class="python-comment"># At registration time:</span>
+sig = inspect.signature(handler)
+<span class="python-comment"># → identifies request_params, handler_path_params, expected_path_params</span>
+
+<span class="python-comment"># At request time:</span>
+kwargs = {}
+<span class="python-keyword">for</span> name <span class="python-keyword">in</span> self.request_params:
+    kwargs[name] = request
+<span class="python-keyword">for</span> name <span class="python-keyword">in</span> self.expected_path_params:
+    kwargs[name] = request.path_params[name]
+<span class="python-keyword">return</span> <span class="python-keyword">await</span> self.handler(**kwargs)</pre>
+        </div>
+
+        <div class="info">
+          <strong>💡 Python Technique — <code>inspect.signature</code>:</strong>
+          The <code>inspect</code> module lets you introspect a function's
+          parameter names, default values, and type annotations at runtime.
+          FastASGI uses this to build a mapping between URL path parameters and
+          handler function arguments, enabling the clean
+          <code>async def get_user(user_id: int, request: Request)</code> style
+          without any boilerplate.
+        </div>
+
+        <!-- ============================================================ -->
+        <!-- REQUEST HANDLING                                              -->
+        <!-- ============================================================ -->
+        <h2 id="request-handling">
+          Request Object — Lazy Parsing & Properties
+        </h2>
+
+        <p>
+          The <code>Request</code> class in
+          <code>fastasgi/request/request.py</code> wraps the raw ASGI scope and
+          body. It uses two key design patterns:
+        </p>
+
+        <h3 id="factory-method">Async Factory Method</h3>
+        <p>
+          Python's <code>__init__</code> cannot be async, but loading the
+          request body requires awaiting the <code>receive</code> callable.
+          FastASGI solves this with the
+          <strong>async factory method</strong> pattern:
+        </p>
+
+        <div class="code-block" data-lang="python">
+          <pre>
+<span class="python-comment"># Can't do this — __init__ can't be async:</span>
+<span class="python-comment"># request = Request(scope, receive)  # body not loaded yet</span>
+
+<span class="python-comment"># Instead, use the factory method:</span>
+request = <span class="python-keyword">await</span> Request.from_asgi(scope, receive)
+<span class="python-comment"># → calls __init__ then awaits load_body()</span></pre>
+        </div>
+
+        <p>
+          The <code>from_asgi</code> class method creates the instance and then
+          calls <code>await request.load_body()</code>, which loops over the
+          <code>receive</code> callable until <code>more_body</code> is
+          <code>False</code>. This gives the rest of the framework a fully
+          loaded, synchronous-access request object.
+        </p>
+
+        <h3 id="lazy-properties">Lazy-Parsed Properties</h3>
+        <p>
+          Parsing headers, query strings, cookies, and JSON is deferred until
+          first access using Python's <code>@property</code> decorator with a
+          private cache field:
+        </p>
+
+        <div class="code-block" data-lang="python">
+          <pre>
+@property
+<span class="python-keyword">def</span> headers(self) -> Dict[str, str]:
+    <span class="python-keyword">if</span> self._headers <span class="python-keyword">is</span> <span class="python-builtin">None</span>:
+        self._headers = {}
+        <span class="python-keyword">for</span> name, value <span class="python-keyword">in</span> self._scope.get(<span class="python-string">"headers"</span>, []):
+            self._headers[name.decode().lower()] = value.decode()
+    <span class="python-keyword">return</span> self._headers</pre>
+        </div>
+
+        <p>
+          This means a handler that only needs <code>request.path</code> never
+          pays the cost of parsing cookies or decoding JSON. The first call
+          populates the cache; subsequent calls return the cached value
+          instantly.
+        </p>
+
+        <!-- ============================================================ -->
+        <!-- MULTIPART PARSING                                             -->
+        <!-- ============================================================ -->
+        <h2 id="multipart-parsing">
+          Multipart Parsing — Approach & Trade-offs
+        </h2>
+
+        <p>
+          File uploads arrive as <code>multipart/form-data</code> content. The
+          parser lives in <code>fastasgi/request/multipart/parser.py</code>.
+          FastASGI's implementation takes a deliberate
+          <strong>simplicity-first</strong>
+          approach:
+        </p>
+
+        <h3 id="non-streaming">The Non-Streaming Approach</h3>
+        <p>
+          FastASGI collects the
+          <strong>entire request body into memory first</strong>, then parses it
+          as a complete byte string. The algorithm is:
+        </p>
+        <ol>
+          <li>
+            Extract the boundary string from the
+            <code>Content-Type</code> header.
+          </li>
+          <li>
+            Split the body bytes on <code>--{boundary}</code> to isolate
+            individual parts.
+          </li>
+          <li>
+            For each part, split on <code>\r\n\r\n</code> to separate headers
+            from content.
+          </li>
+          <li>
+            Parse the <code>Content-Disposition</code> header to determine field
+            name and (optionally) filename.
+          </li>
+          <li>
+            If a filename is present, write the content to a temporary file and
+            wrap it in an <code>UploadFile</code> object. Otherwise, decode it
+            as a form field.
+          </li>
+        </ol>
+
+        <div class="code-block" data-lang="python">
+          <pre>
+<span class="python-comment"># Core parsing logic (simplified)</span>
+boundary_bytes = <span class="python-string">f"--{boundary}"</span>.encode()
+parts = body.split(boundary_bytes)
+
+<span class="python-keyword">for</span> part <span class="python-keyword">in</span> parts[<span class="python-number">1</span>:-<span class="python-number">1</span>]:            <span class="python-comment"># skip first empty + last closing</span>
+    headers, content = part.split(<span class="python-string">b"\r\n\r\n"</span>, <span class="python-number">1</span>)
+    <span class="python-comment"># → parse Content-Disposition, extract field/file</span></pre>
+        </div>
+
+        <div class="warning">
+          <strong
+            >⚠️ Important Trade-off — Full-Body vs. Streaming Parsing:</strong
+          >
+          <p>
+            FastASGI reads the complete message body before parsing. This
+            simplifies the implementation enormously because you can use
+            <code>bytes.split()</code> and simple string operations. However, it
+            means the entire upload must fit in memory at once.
+          </p>
+          <p>
+            A production-grade approach would parse the body
+            <strong>as it arrives</strong> from the ASGI
+            <code>receive</code> channel — processing each chunk and writing
+            file data to disk incrementally. This streaming strategy can handle
+            uploads of any size with constant memory, but it is
+            <strong>significantly more complex to implement</strong>: you must
+            maintain parser state across chunks, handle boundaries that span two
+            chunks, and manage partial header reads. Frameworks like Starlette
+            use the
+            <a href="https://github.com/andrew-d/python-multipart"
+              >python-multipart</a
+            >
+            library for this purpose.
+          </p>
+        </div>
+
+        <h3 id="upload-file">The UploadFile Class</h3>
+        <p>
+          Parsed files are wrapped in <code>UploadFile</code> objects that
+          provide a clean interface:
+        </p>
+        <ul>
+          <li>
+            <strong><code>open(mode="rb")</code></strong> — returns a standard
+            Python file handle for reading. Write modes are explicitly rejected
+            to protect the temp file.
+          </li>
+          <li>
+            <strong><code>save(path)</code></strong> — copies the temp file to a
+            permanent location using <code>shutil.copy2</code> (preserving
+            metadata).
+          </li>
+          <li>
+            <strong><code>cleanup()</code></strong> — deletes the temp file.
+            Called automatically by the <code>Request</code> in its
+            <code>finally</code> block and also in <code>__del__</code> as a
+            safety net.
+          </li>
+        </ul>
+
+        <!-- ============================================================ -->
+        <!-- RESPONSE BUILDING                                             -->
+        <!-- ============================================================ -->
+        <h2 id="response-building">
+          Response Building — Content Detection & ASGI Conversion
+        </h2>
+
+        <p>
+          The <code>Response</code> class in
+          <code>fastasgi/response.py</code> accepts content in several Python
+          types and automatically determines the right
+          <code>Content-Type</code> header:
+        </p>
+
+        <ul>
+          <li>
+            <code>dict</code> or <code>list</code> → serialised with
+            <code>json.dumps</code>, content type set to
+            <code>application/json</code>.
+          </li>
+          <li>
+            <code>str</code> → scanned for HTML markers like
+            <code>&lt;html&gt;</code> or <code>&lt;h1&gt;</code>. If found, the
+            type is <code>text/html</code>; otherwise <code>text/plain</code>.
+          </li>
+          <li>
+            <code>bytes</code> → kept as-is, content type defaults to
+            <code>application/octet-stream</code>.
+          </li>
+          <li>
+            <code>int</code> / <code>float</code> → converted to string, type
+            <code>text/plain</code>.
+          </li>
+        </ul>
+
+        <p>
+          An explicit <code>content_type</code> argument always overrides auto-
+          detection. The convenience functions <code>text_response()</code>,
+          <code>json_response()</code>, <code>html_response()</code>, and
+          <code>redirect_response()</code> are thin wrappers that set the
+          content type explicitly and make handler code more readable.
+        </p>
+
+        <h3 id="asgi-conversion">Converting to ASGI Messages</h3>
+        <p>
+          <code>to_asgi_response()</code> converts the high-level
+          <code>Response</code> into the dictionary format the
+          <code>FastASGI._send_response</code> method expects. It encodes every
+          header name and value to bytes (as required by the ASGI spec) and
+          appends each <code>Set-Cookie</code> value as a separate header entry
+          — because HTTP allows multiple <code>Set-Cookie</code> headers but not
+          comma-separated values.
+        </p>
+
+        <h3 id="method-chaining">Method Chaining</h3>
+        <p>
+          <code>set_header()</code>, <code>set_cookie()</code>, and
+          <code>delete_cookie()</code> all return <code>self</code>, enabling a
+          fluent interface:
+        </p>
+
+        <div class="code-block" data-lang="python">
+          <pre>
+<span class="python-keyword">return</span> Response(<span class="python-string">"OK"</span>)\
+    .set_header(<span class="python-string">"X-Custom"</span>, <span class="python-string">"value"</span>)\
+    .set_cookie(<span class="python-string">"session"</span>, <span class="python-string">"abc123"</span>, httponly=<span class="python-builtin">True</span>)</pre>
+        </div>
+
+        <p>
+          This pattern is common in builder-style APIs and keeps response
+          construction concise.
+        </p>
+
+        <!-- ============================================================ -->
+        <!-- SUMMARY TABLE                                                 -->
+        <!-- ============================================================ -->
+        <h2 id="techniques-summary">Python Techniques Summary</h2>
+
+        <table class="spec-table">
+          <caption>
+            Key Python Techniques Used in FastASGI
+          </caption>
+          <thead>
+            <tr>
+              <th>Technique</th>
+              <th>Where Used</th>
+              <th>Why</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Closure with default args</td>
+              <td>MiddlewareChain.build()</td>
+              <td>Capture loop variables at definition time</td>
+            </tr>
+            <tr>
+              <td><code>typing.Protocol</code></td>
+              <td>MiddlewareCallable</td>
+              <td>Structural subtyping without inheritance</td>
+            </tr>
+            <tr>
+              <td>Async factory method</td>
+              <td>Request.from_asgi()</td>
+              <td><code>__init__</code> cannot be async</td>
+            </tr>
+            <tr>
+              <td>Lazy <code>@property</code></td>
+              <td>Request.headers, .cookies, .query_params</td>
+              <td>Avoid parsing cost until needed</td>
+            </tr>
+            <tr>
+              <td><code>weakref.WeakSet</code></td>
+              <td>Request._active_requests</td>
+              <td>Track instances without preventing GC</td>
+            </tr>
+            <tr>
+              <td><code>inspect.signature</code></td>
+              <td>Route._inspect_handler_signature()</td>
+              <td>Introspect handler params for injection</td>
+            </tr>
+            <tr>
+              <td>Compiled <code>re.Pattern</code></td>
+              <td>Route._compile_route_pattern()</td>
+              <td>One-time compile, fast per-request match</td>
+            </tr>
+            <tr>
+              <td>Tuple sorting key</td>
+              <td>APIRouter._calculate_route_specificity()</td>
+              <td>Multi-criteria route ordering</td>
+            </tr>
+            <tr>
+              <td>Method chaining (<code>return self</code>)</td>
+              <td>Response.set_header(), .set_cookie()</td>
+              <td>Fluent builder-style API</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <!-- ============================================================ -->
+        <!-- NAVIGATION                                                    -->
+        <!-- ============================================================ -->
+        <div class="tutorial-nav">
+          <a href="04-fastasgi-architecture.html" class="nav-button previous"
+            >← FastASGI Architecture</a
+          >
+        </div>
+      </main>
+
+      <nav class="right-sidebar">
+        <h3>📖 In This Section</h3>
+        <ul>
+          <li><a href="#fastasgi-class">FastASGI Application Class</a></li>
+          <li><a href="#http-flow">HTTP Request Lifecycle</a></li>
+          <li><a href="#lifespan-handling">Lifespan Handling</a></li>
+          <li><a href="#middleware-chain">Middleware Chain</a></li>
+          <li><a href="#why-chaining">Why Function Composition?</a></li>
+          <li><a href="#chaining-algorithm">The Chaining Algorithm</a></li>
+          <li><a href="#routing-engine">Routing Engine</a></li>
+          <li><a href="#route-matching">Route Matching Strategy</a></li>
+          <li><a href="#param-injection">Parameter Injection</a></li>
+          <li><a href="#request-handling">Request Object</a></li>
+          <li><a href="#multipart-parsing">Multipart Parsing</a></li>
+          <li><a href="#non-streaming">Non-Streaming Approach</a></li>
+          <li><a href="#response-building">Response Building</a></li>
+          <li><a href="#techniques-summary">Python Techniques Summary</a></li>
+        </ul>
+      </nav>
+    </div>
+
+    <script src="scripts/tutorial.js"></script>
+  </body>
+</html>
